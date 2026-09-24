@@ -1,0 +1,13 @@
+.env
+server/nginx/certs/*.key
+server/nginx/certs/*.csr
+server/nginx/certs/*.srl
+server/nginx/certs/rootCA.*
+server/nginx/certs/server.*
+upload-store/*
+!upload-store/.gitkeep
+target/
+node_modules/
+.gradle/
+.idea/
+.vscode/

@@ -1,0 +1,31 @@
+name: smartbis_jangsung
+
+services:
+  postgres-db:
+    image: docker.io/library/postgres:15-alpine
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    restart: unless-stopped
+
+  egov-backend:
+    build:
+      context: ./server/egov-backend
+    env_file:
+      - .env
+    expose:
+      - "8080"
+    depends_on:
+      - postgres-db
+    restart: unless-stopped
+
+volumes:
+  db-data:
