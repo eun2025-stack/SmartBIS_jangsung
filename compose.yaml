@@ -21,10 +21,43 @@ services:
       context: ./server/egov-backend
     env_file:
       - .env
+    environment:
+      CONTENT_ROOT: /app/content-store
     expose:
       - "8080"
+    volumes:
+      - ./content-store:/app/content-store:ro
     depends_on:
       - postgres-db
+    restart: unless-stopped
+
+  node-watcher:
+    build:
+      context: ./server/node-watcher
+    env_file:
+      - .env
+    environment:
+      TZ: Asia/Seoul
+      DB_HOST: postgres-db
+      DB_PORT: 5432
+      UPLOAD_ROOT: /app/upload-store
+      CONTENT_ROOT: /app/content-store
+    volumes:
+      - ./upload-store:/app/upload-store
+      - ./content-store:/app/content-store
+    depends_on:
+      - postgres-db
+    restart: unless-stopped
+
+  nginx:
+    image: docker.io/library/nginx:alpine
+    ports:
+      - "8443:443"
+    volumes:
+      - ./server/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./server/nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - egov-backend
     restart: unless-stopped
 
 volumes:
