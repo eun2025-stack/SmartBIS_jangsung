@@ -1,0 +1,200 @@
+package com.smartbis.backend.display;
+
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.math.BigDecimal;
+import java.sql.Timestamp;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.HashMap;
+import java.util.Map;
+
+import static org.springframework.http.HttpStatus.NOT_FOUND;
+
+@Service
+public class DisplayService {
+
+    private final JdbcTemplate jdbcTemplate;
+
+    public DisplayService(JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+    }
+
+    public DisplayItem next(String vehicleNumber) {
+        Map<String, Object> arrival = jdbcTemplate.query("""
+                SELECT current_stop_text,
+                       next_stop_text,
+                       distance_meters,
+                       expires_at
+                  FROM arrival_predictions
+                 WHERE vehicle_number = ?
+                   AND within_100m = true
+                   AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
+                 ORDER BY observed_at DESC
+                 LIMIT 1
+                """, rs -> {
+            if (!rs.next()) return null;
+
+            Map<String, Object> row = new HashMap<>();
+            row.put("currentStop", rs.getString("current_stop_text"));
+            row.put("nextStop", rs.getString("next_stop_text"));
+            row.put("distanceMeters", rs.getBigDecimal("distance_meters"));
+            row.put("expiresAt", rs.getTimestamp("expires_at"));
+            return row;
+        }, vehicleNumber);
+
+        if (arrival != null) {
+            Map<String, Object> policy = policy("ARRIVAL");
+
+            return new DisplayItem(
+                    "ARRIVAL",
+                    1000,
+                    true,
+                    (String) arrival.get("currentStop"),
+                    (String) arrival.get("nextStop"),
+                    (BigDecimal) arrival.get("distanceMeters"),
+                    null,
+                    "ARRIVAL",
+                    "이번 정류소 "
+                            + arrival.get("currentStop")
+                            + "\n다음 정류소 "
+                            + arrival.get("nextStop"),
+                    null,
+                    toOffsetDateTime((Timestamp) arrival.get("expiresAt")),
+                    integer(policy, "displaySeconds"),
+                    integer(policy, "repeatIntervalSeconds")
+            );
+        }
+
+        Map<String, Object> disaster = jdbcTemplate.query("""
+                SELECT message_text,
+                       severity,
+                       expires_at
+                  FROM disaster_messages
+                 WHERE status = 'ACTIVE'
+                   AND issued_at <= CURRENT_TIMESTAMP
+                   AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
+                 ORDER BY severity DESC, issued_at DESC
+                 LIMIT 1
+                """, rs -> {
+            if (!rs.next()) return null;
+
+            Map<String, Object> row = new HashMap<>();
+            row.put("message", rs.getString("message_text"));
+            row.put("expiresAt", rs.getTimestamp("expires_at"));
+            return row;
+        });
+
+        if (disaster != null) {
+            Map<String, Object> policy = policy("DISASTER");
+
+            return new DisplayItem(
+                    "DISASTER",
+                    900,
+                    false,
+                    null,
+                    null,
+                    null,
+                    null,
+                    "DISASTER",
+                    String.valueOf(disaster.get("message")),
+                    null,
+                    toOffsetDateTime((Timestamp) disaster.get("expiresAt")),
+                    integer(policy, "displaySeconds"),
+                    integer(policy, "repeatIntervalSeconds")
+            );
+        }
+
+        Map<String, Object> content = jdbcTemplate.query("""
+                SELECT c.content_id,
+                       c.content_type,
+                       c.content
+                  FROM contents c
+                  JOIN content_schedules s
+                    ON s.content_id = c.content_id
+                 WHERE s.active = true
+                   AND (c.display_start_date IS NULL
+                        OR c.display_start_date <= CURRENT_DATE)
+                   AND (c.display_end_date IS NULL
+                        OR c.display_end_date >= CURRENT_DATE)
+                 ORDER BY s.force_display DESC,
+                          s.priority DESC,
+                          c.updated_at DESC
+                 LIMIT 1
+                """, rs -> {
+            if (!rs.next()) return null;
+
+            Map<String, Object> row = new HashMap<>();
+            row.put("contentId", rs.getString("content_id"));
+            row.put("contentType", rs.getString("content_type"));
+            row.put("content", rs.getString("content"));
+            return row;
+        });
+
+        if (content != null) {
+            String contentType = String.valueOf(content.get("contentType"));
+            Map<String, Object> policy = policy(contentType);
+
+            return new DisplayItem(
+                    contentType,
+                    integer(policy, "priority"),
+                    false,
+                    null,
+                    null,
+                    null,
+                    String.valueOf(content.get("contentId")),
+                    contentType,
+                    String.valueOf(content.get("content")),
+                    "/api/v1/media/" + content.get("contentId"),
+                    null,
+                    integer(policy, "displaySeconds"),
+                    integer(policy, "repeatIntervalSeconds")
+            );
+        }
+
+        throw new ResponseStatusException(
+                NOT_FOUND,
+                "표출 가능한 항목이 없습니다."
+        );
+    }
+
+    private Map<String, Object> policy(String displayType) {
+        return jdbcTemplate.query("""
+                SELECT display_seconds,
+                       repeat_interval_seconds,
+                       priority
+                  FROM display_policies
+                 WHERE display_type = ?
+                   AND enabled = true
+                   AND effective_from <= CURRENT_TIMESTAMP
+                   AND (effective_to IS NULL
+                        OR effective_to > CURRENT_TIMESTAMP)
+                 ORDER BY updated_at DESC
+                 LIMIT 1
+                """, rs -> {
+            Map<String, Object> row = new HashMap<>();
+
+            if (rs.next()) {
+                row.put("displaySeconds", rs.getObject("display_seconds"));
+                row.put("repeatIntervalSeconds",
+                        rs.getObject("repeat_interval_seconds"));
+                row.put("priority", rs.getInt("priority"));
+            }
+
+            return row;
+        }, displayType);
+    }
+
+    private Integer integer(Map<String, Object> map, String key) {
+        Object value = map.get(key);
+        return value == null ? null : ((Number) value).intValue();
+    }
+
+    private OffsetDateTime toOffsetDateTime(Timestamp timestamp) {
+        return timestamp == null
+                ? null
+                : timestamp.toInstant().atOffset(ZoneOffset.ofHours(9));
+    }
+}

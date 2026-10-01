@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1920, initial-scale=1">
+<title>장성군 시내버스 안내 - 안3 자연친화형</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--cream:#F7F1E1;--dark:#1F2E22;--green1:#2F5233;--green2:#4C7A4E;--green3:#8FB08A;--terracotta:#B5563C;--yellow:#E8B94C;--red:#B5563C;}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'Noto Sans KR',sans-serif;}
+#stageWrap{width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;background:#000;}
+#stage{position:relative;width:1920px;height:1080px;overflow:hidden;flex-shrink:0;cursor:pointer;}
+.slide{position:absolute;inset:0;opacity:0;pointer-events:none;transition:opacity .6s ease-in-out;display:flex;flex-direction:column;}
+.slide.active{opacity:1;pointer-events:auto;}
+.slide::before{content:'';position:absolute;inset:0;background-image:radial-gradient(rgba(31,46,34,.05) 1.6px,transparent 1.6px);background-size:36px 36px;z-index:0;pointer-events:none;}
+.sun{position:absolute;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,var(--yellow),rgba(232,185,76,0));opacity:.5;top:-60px;right:60px;z-index:0;}
+.mountains{position:absolute;left:0;right:0;bottom:0;height:180px;z-index:0;}
+.mountains .layer{position:absolute;bottom:0;left:0;width:100%;height:100%;}
+.mountains .l1{background:var(--green3);opacity:.35;clip-path:polygon(0 60%,15% 40%,32% 55%,50% 30%,68% 52%,85% 35%,100% 55%,100% 100%,0 100%);}
+.mountains .l2{background:var(--green2);opacity:.5;clip-path:polygon(0 70%,18% 50%,38% 68%,55% 42%,72% 65%,90% 48%,100% 68%,100% 100%,0 100%);}
+.mountains .l3{background:var(--green1);opacity:.65;clip-path:polygon(0 85%,20% 70%,40% 82%,60% 62%,80% 80%,100% 68%,100% 100%,0 100%);}
+.head{flex:0 0 118px;display:flex;align-items:center;justify-content:space-between;padding:0 64px;position:relative;z-index:2;}
+.gov-badge{width:88px;height:88px;border-radius:50%;background:var(--dark);border:5px solid var(--yellow);display:flex;align-items:center;justify-content:center;color:var(--yellow);font-size:20px;font-weight:700;text-align:center;line-height:1.2;}
+.clock{font-size:30px;color:var(--dark);font-weight:700;opacity:.75;}
+.section-tag{font-size:36px;font-weight:700;letter-spacing:2px;padding:12px 30px;border-radius:14px;color:#fff;box-shadow:0 10px 24px rgba(0,0,0,.15);}
+.main-area{flex:1 1 auto;position:relative;z-index:2;display:flex;align-items:center;justify-content:center;padding:0 60px;gap:34px;}
+.card{background:rgba(255,255,255,.6);border:1px solid rgba(31,46,34,.12);border-radius:32px;box-shadow:0 20px 46px rgba(31,46,34,.18);}
+.illus-panel{flex:0 0 36%;height:100%;display:flex;align-items:center;justify-content:center;position:relative;}
+.illus-panel svg{width:94%;max-width:520px;}
+
+/* 1. 정류소 도착정보 */
+#slide-stop{background:linear-gradient(180deg,#FBF7EA,var(--cream));}
+.road{position:absolute;bottom:16%;left:6%;right:6%;height:10px;background:repeating-linear-gradient(90deg,var(--terracotta) 0 34px,transparent 34px 66px);border-radius:6px;animation:roadmove 1.2s linear infinite;}
+@keyframes roadmove{from{background-position:0 0;}to{background-position:-100px 0;}}
+.stop-card{flex:1;padding:38px 56px;text-align:center;}
+.stop-card .label{font-size:40px;color:var(--green1);font-weight:700;letter-spacing:2px;}
+.stop-card .cur-stop{font-size:132px;font-weight:700;margin:12px 0;color:var(--dark);letter-spacing:1px;line-height:1.12;}
+.arrow{font-size:46px;color:var(--terracotta);margin:4px 0;animation:bounce 1.4s infinite;}
+@keyframes bounce{0%,100%{transform:translateY(0);}50%{transform:translateY(12px);}}
+.next-stop{font-size:90px;font-weight:700;color:var(--terracotta);margin-top:8px;}
+.route-panel{flex:0 0 230px;margin:0 56px 26px;padding:20px 50px 16px;position:relative;z-index:2;}
+.route-title{font-size:26px;color:var(--green1);font-weight:700;letter-spacing:2px;margin-bottom:14px;}
+.route-line{position:relative;display:flex;justify-content:space-between;padding-top:6px;}
+.route-line::before{content:'';position:absolute;top:19px;left:0;right:0;height:6px;background:rgba(47,82,51,.2);border-radius:3px;}
+.route-fill{position:absolute;top:19px;left:0;height:6px;background:var(--terracotta);border-radius:3px;z-index:1;}
+.stop-node{position:relative;width:25%;display:flex;flex-direction:column;align-items:center;z-index:2;}
+.node-dot{width:36px;height:36px;border-radius:50%;background:var(--cream);border:5px solid var(--green2);display:flex;align-items:center;justify-content:center;font-size:18px;}
+.stop-node.passed .node-dot{background:var(--green2);}
+.stop-node.current .node-dot{width:58px;height:58px;background:var(--terracotta);border-color:var(--terracotta);box-shadow:0 0 0 0 rgba(181,86,60,.5);animation:pulse 1.6s infinite;}
+.node-name{margin-top:14px;font-size:27px;font-weight:700;color:var(--green1);text-align:center;}
+.stop-node.current .node-name{color:var(--terracotta);font-size:30px;}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(181,86,60,.5);}70%{box-shadow:0 0 0 24px rgba(181,86,60,0);}100%{box-shadow:0 0 0 0 rgba(181,86,60,0);}}
+
+/* 공지사항 */
+.info-illus{flex:0 0 34%;height:78%;border-radius:32px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.5);border:1px solid rgba(31,46,34,.12);}
+.info-illus svg{width:74%;max-width:340px;}
+.info-panel{flex:1;padding:10px 20px;}
+.info-eyebrow{display:inline-flex;align-items:center;gap:12px;font-size:28px;font-weight:700;color:#fff;padding:10px 26px;border-radius:40px;margin-bottom:26px;background:var(--accent);}
+.info-title{font-size:96px;font-weight:700;color:var(--dark);margin-bottom:32px;line-height:1.2;}
+.info-rows{display:flex;flex-direction:column;gap:18px;}
+.info-row{display:flex;align-items:center;gap:24px;background:rgba(255,255,255,.55);border:1px solid rgba(31,46,34,.1);border-radius:20px;padding:24px 34px;}
+.info-row .ico{font-size:42px;flex:0 0 auto;width:60px;text-align:center;}
+.info-row .txt{font-size:38px;color:#3a4a3d;font-weight:700;line-height:1.4;}
+.info-row .txt b{color:var(--dark);}
+#slide-notice1{background:linear-gradient(180deg,#F5EED9,#EFE6CF);}
+#slide-notice2{background:linear-gradient(180deg,#EAF1E4,#D9E7D0);}
+#slide-notice3{background:linear-gradient(180deg,#F0E4EE,#E3D3E5);}
+
+/* 행사 */
+#slide-event1{background:linear-gradient(180deg,#FCE6C9,#F3B487);}
+#slide-event2{background:linear-gradient(180deg,#E9F3EA,#CFE3D0);}
+.event-badge{display:inline-block;font-size:26px;font-weight:700;padding:10px 26px;border-radius:14px;margin-bottom:22px;}
+#slide-event1 .event-badge{color:#6b3520;background:rgba(181,86,60,.18);}
+#slide-event2 .event-badge{color:var(--green1);background:rgba(47,82,51,.15);}
+.event-title{font-size:64px;font-weight:700;margin-bottom:26px;line-height:1.3;}
+#slide-event1 .event-title{color:#5c2f1a;}
+#slide-event2 .event-title{color:var(--dark);}
+.event-meta{display:flex;flex-direction:column;gap:16px;}
+.event-row{display:flex;align-items:center;gap:20px;}
+.event-row .ico{width:60px;height:60px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:32px;flex:0 0 auto;}
+#slide-event1 .event-row .ico{background:rgba(181,86,60,.16);}
+#slide-event2 .event-row .ico{background:rgba(47,82,51,.14);}
+.event-row .txt{font-size:36px;font-weight:500;}
+#slide-event1 .event-row .txt{color:#6b3520;}
+#slide-event2 .event-row .txt{color:#2f4a34;}
+
+/* 이미지/동영상 콘텐츠 공통 */
+.media-slide{background:linear-gradient(180deg,#E8E2CC,#D8D1B6);}
+.media-area{flex:1;position:relative;z-index:2;display:flex;align-items:center;justify-content:center;padding:30px 66px 46px;}
+.image-frame{position:relative;width:100%;height:100%;border-radius:28px;overflow:hidden;background-size:cover;background-position:center;background-color:rgba(31,46,34,.05);border:3px solid rgba(31,46,34,.18);box-shadow:0 30px 70px rgba(31,46,34,.25);}
+.media-placeholder{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;background:rgba(255,255,255,.35);}
+.image-frame.has-content .media-placeholder{display:none;}
+.ph-icon{font-size:110px;opacity:.55;}
+.ph-text{font-size:38px;color:var(--green1);font-weight:700;}
+.picker-btn{display:inline-flex;align-items:center;gap:14px;font-size:32px;font-weight:700;color:#fff;background:var(--terracotta);padding:20px 44px;border-radius:16px;cursor:pointer;box-shadow:0 12px 26px rgba(181,86,60,.4);}
+.picker-btn.floating{position:absolute;top:30px;right:30px;font-size:24px;padding:14px 30px;background:rgba(31,46,34,.55);color:#fff;border:1px solid rgba(255,255,255,.35);backdrop-filter:blur(6px);z-index:5;}
+.picker-label-wrap{position:absolute;bottom:30px;left:30px;font-size:22px;color:#fff;background:rgba(31,46,34,.5);padding:10px 22px;border-radius:12px;z-index:4;}
+
+/* 동영상 전용(풀블리드) */
+#slide-video{background:#000;}
+.video-frame{position:relative;width:100%;height:100%;overflow:hidden;background:#000;}
+#videoPlayer{width:100%;height:100%;object-fit:cover;display:block;background:#000;}
+.video-frame:not(.has-content) #videoPlayer{display:none;}
+.video-overlay-title{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;text-align:center;background:rgba(31,46,34,.55);backdrop-filter:blur(6px);border-top:1px solid rgba(255,255,255,.3);padding:44px 40px;color:#fff;font-size:140px;font-weight:700;letter-spacing:2px;z-index:4;}
+
+/* 재난정보 */
+#slide-disaster{background:linear-gradient(180deg,#7A1F1F,#4a1010);}
+.disaster-wrap{display:flex;align-items:center;gap:50px;width:100%;max-width:1720px;}
+.siren-wrap{flex:0 0 290px;display:flex;align-items:center;justify-content:center;position:relative;}
+.siren-wrap svg{width:210px;animation:warnScale 1s infinite;}
+@keyframes warnScale{0%,100%{transform:scale(1);}50%{transform:scale(1.1);}}
+.ring{position:absolute;border:3px solid rgba(255,255,255,.5);border-radius:50%;animation:ringOut 1.8s ease-out infinite;}
+.ring.r1{width:230px;height:230px;} .ring.r2{width:230px;height:230px;animation-delay:.6s;} .ring.r3{width:230px;height:230px;animation-delay:1.2s;}
+@keyframes ringOut{0%{transform:scale(1);opacity:.9;}100%{transform:scale(2.1);opacity:0;}}
+.disaster-title{color:#fff;font-size:96px;font-weight:700;margin:16px 0 26px;}
+.disaster-list{display:flex;flex-direction:column;gap:14px;}
+.disaster-row{display:flex;align-items:center;gap:20px;background:rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.18);border-radius:20px;padding:18px 26px;}
+.disaster-row .ico{font-size:34px;flex:0 0 auto;}
+.disaster-row .txt{font-size:32px;color:#ffe1d6;font-weight:700;}
+
+.dots{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);display:flex;gap:12px;z-index:10;}
+.dot{width:15px;height:15px;border-radius:50%;background:rgba(31,46,34,.25);cursor:pointer;}
+#slide-disaster ~ .dots .dot{background:rgba(255,255,255,.3);}
+.dot.active{background:var(--terracotta);width:44px;border-radius:8px;}
+.tap-hint{position:absolute;bottom:20px;right:56px;font-size:19px;color:rgba(31,46,34,.5);font-weight:500;z-index:10;}
+</style>
+</head>
+<body>
+<div id="stageWrap"><div id="stage">
+
+<section class="slide active" id="slide-stop">
+  <div class="sun"></div>
+  <div class="head"><div class="gov-badge">장성군</div><div class="clock"></div></div>
+  <div class="main-area">
+    <div class="illus-panel">
+      <svg viewBox="0 0 400 260" fill="none">
+        <ellipse cx="200" cy="235" rx="150" ry="14" fill="#000" opacity=".15"/>
+        <rect x="40" y="70" width="320" height="120" rx="24" fill="var(--green1)" stroke="var(--terracotta)" stroke-width="4"/>
+        <rect x="40" y="70" width="320" height="46" rx="20" fill="#213826"/>
+        <rect x="62" y="82" width="52" height="30" rx="6" fill="#E8B94C" opacity=".85"/>
+        <rect x="126" y="82" width="52" height="30" rx="6" fill="#E8B94C" opacity=".85"/>
+        <rect x="190" y="82" width="52" height="30" rx="6" fill="#E8B94C" opacity=".85"/>
+        <rect x="254" y="82" width="52" height="30" rx="6" fill="#E8B94C" opacity=".85"/>
+        <circle cx="110" cy="200" r="26" fill="#213826" stroke="#F7F1E1" stroke-width="6"/>
+        <circle cx="290" cy="200" r="26" fill="#213826" stroke="#F7F1E1" stroke-width="6"/>
+        <text x="200" y="146" text-anchor="middle" fill="#F7F1E1" font-size="24" font-weight="700" font-family="Noto Sans KR">300</text>
+      </svg>
+      <div class="road"></div>
+    </div>
+    <div class="card stop-card">
+      <p class="label">이번 정류장</p>
+      <h1 class="cur-stop">장성터미널</h1>
+      <div class="arrow">▼</div>
+      <p class="label">다음 정류장</p>
+      <h2 class="next-stop">장성읍사무소</h2>
+    </div>
+  </div>
+  <div class="card route-panel">
+    <p class="route-title">🛣 전체 노선안내</p>
+    <div class="route-line">
+      <div class="route-fill" style="width:38%;"></div>
+      <div class="stop-node passed"><span class="node-dot"></span><span class="node-name">문화예술회관</span></div>
+      <div class="stop-node current"><span class="node-dot">🚌</span><span class="node-name">장성터미널</span></div>
+      <div class="stop-node"><span class="node-dot"></span><span class="node-name">장성읍사무소</span></div>
+      <div class="stop-node"><span class="node-dot"></span><span class="node-name">장성역</span></div>
+    </div>
+  </div>
+  <div class="mountains"><div class="layer l1"></div><div class="layer l2"></div><div class="layer l3"></div></div>
+</section>
+
+<section class="slide" id="slide-notice1" style="--accent:#2F5233;">
+  <div class="head"><div class="gov-badge">장성군</div><div class="section-tag" style="background:var(--green1);">📢 공지사항 · 1/3</div><div class="clock"></div></div>
+  <div class="main-area">
+    <div class="info-illus"><svg viewBox="0 0 200 200"><rect x="30" y="60" width="140" height="90" rx="16" fill="#2F5233" opacity=".9"/><rect x="30" y="60" width="140" height="26" rx="12" fill="#152a1a"/><rect x="46" y="100" width="60" height="14" rx="4" fill="#152a1a" opacity=".7"/><circle cx="150" cy="130" r="12" fill="#152a1a" opacity=".7"/></svg></div>
+    <div class="info-panel">
+      <span class="info-eyebrow">💳 요금안내</span>
+      <div class="info-title">시내버스 요금 안내</div>
+      <div class="info-rows">
+        <div class="info-row"><span class="ico">🧑</span><span class="txt">성인 <b>1,400원</b></span></div>
+        <div class="info-row"><span class="ico">🎒</span><span class="txt">청소년 <b>1,100원</b></span></div>
+        <div class="info-row"><span class="ico">🧒</span><span class="txt">어린이 <b>700원</b></span></div>
+        <div class="info-row"><span class="ico">💳</span><span class="txt">교통카드 기준 요금입니다</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" id="slide-notice2" style="--accent:#B5563C;">
+  <div class="head"><div class="gov-badge">장성군</div><div class="section-tag" style="background:var(--terracotta);">📢 공지사항 · 2/3</div><div class="clock"></div></div>
+  <div class="main-area">
+    <div class="info-illus"><svg viewBox="0 0 200 200"><path d="M30 150 L70 90 L100 120 L140 60 L170 150 Z" fill="none" stroke="#B5563C" stroke-width="6" stroke-linejoin="round"/><circle cx="70" cy="90" r="8" fill="#B5563C"/><circle cx="140" cy="60" r="8" fill="#E8B94C"/></svg></div>
+    <div class="info-panel">
+      <span class="info-eyebrow">🛑 노선변경</span>
+      <div class="info-title">노선 변경 안내</div>
+      <div class="info-rows">
+        <div class="info-row"><span class="ico">📅</span><span class="txt"><b>11월 1일부터</b> 시행</span></div>
+        <div class="info-row"><span class="ico">🛣</span><span class="txt">상무대 경유 구간 일부 변경</span></div>
+        <div class="info-row"><span class="ico">📱</span><span class="txt">자세한 노선은 홈페이지 참고</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" id="slide-notice3" style="--accent:#7a5230;">
+  <div class="head"><div class="gov-badge">장성군</div><div class="section-tag" style="background:#7a5230;">📢 공지사항 · 3/3</div><div class="clock"></div></div>
+  <div class="main-area">
+    <div class="info-illus"><svg viewBox="0 0 200 200"><rect x="45" y="50" width="110" height="100" rx="18" fill="#7a5230" opacity=".9"/><circle cx="100" cy="100" r="22" fill="#33210f"/><rect x="88" y="88" width="24" height="10" fill="#fff" opacity=".8"/></svg></div>
+    <div class="info-panel">
+      <span class="info-eyebrow">📞 분실물</span>
+      <div class="info-title">분실물 안내</div>
+      <div class="info-rows">
+        <div class="info-row"><span class="ico">📦</span><span class="txt">분실물은 종합상황실 보관</span></div>
+        <div class="info-row"><span class="ico">☎</span><span class="txt">문의 <b>061-390-0000</b></span></div>
+        <div class="info-row"><span class="ico">🕘</span><span class="txt">평일 09:00 ~ 18:00 접수</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide media-slide" id="slide-image">
+  <div class="head"><div class="gov-badge">장성군</div><div class="section-tag" style="background:#5b6b52;">🖼 이미지 콘텐츠</div><div class="clock"></div></div>
+  <div class="main-area media-area">
+    <div class="image-frame" id="imageFrame">
+      <label class="picker-btn floating" for="imageInput" onclick="event.stopPropagation()">📁 이미지 변경</label>
+      <div class="media-placeholder" id="imagePlaceholder">
+        <div class="ph-icon">🖼</div>
+        <div class="ph-text">등록된 이미지 콘텐츠가 없습니다</div>
+        <label class="picker-btn" for="imageInput" onclick="event.stopPropagation()">📁 이미지 찾기</label>
+      </div>
+      <div class="picker-label-wrap">콘텐츠ID 수신 시 자동 표출됩니다</div>
+    </div>
+    <input type="file" id="imageInput" accept="image/*" hidden onclick="event.stopPropagation()">
+  </div>
+</section>
+
+<section class="slide" id="slide-event1">
+  <div class="head"><div class="gov-badge">장성군</div><div class="section-tag" style="background:var(--terracotta);">🎪 행사안내 · 1/2</div><div class="clock"></div></div>
+  <div class="main-area">
+    <div class="info-illus">
+      <svg viewBox="0 0 300 300" fill="none">
+        <circle cx="150" cy="120" r="6" fill="#E8B94C"/>
+        <g stroke="#E8B94C" stroke-width="4"><line x1="150" y1="60" x2="150" y2="30"/><line x1="192" y1="78" x2="212" y2="58"/><line x1="210" y1="120" x2="240" y2="120"/><line x1="192" y1="162" x2="212" y2="182"/><line x1="108" y1="78" x2="88" y2="58"/><line x1="90" y1="120" x2="60" y2="120"/><line x1="108" y1="162" x2="88" y2="182"/></g>
+        <circle cx="150" cy="120" r="26" fill="none" stroke="#B5563C" stroke-width="5"/>
+        <g stroke="#5c2f1a" stroke-width="3"><line x1="40" y1="200" x2="260" y2="200"/></g>
+        <rect x="70" y="200" width="40" height="55" rx="10" fill="#B5563C"/><rect x="130" y="200" width="40" height="55" rx="10" fill="#2F5233"/><rect x="190" y="200" width="40" height="55" rx="10" fill="#E8B94C"/>
+      </svg>
+    </div>
+    <div class="info-panel">
+      <span class="event-badge">📅 10.24 ~ 10.26</span>
+      <div class="event-title">2025 장성 홍길동 축제</div>
+      <div class="event-meta">
+        <div class="event-row"><div class="ico">📍</div><div class="txt">홍길동테마파크 일원</div></div>
+        <div class="event-row"><div class="ico">🎪</div><div class="txt">공연 · 체험 · 불꽃놀이</div></div>
+        <div class="event-row"><div class="ico">🚌</div><div class="txt">축제기간 임시 셔틀버스 운행</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" id="slide-event2">
+  <div class="head"><div class="gov-badge">장성군</div><div class="section-tag" style="background:var(--green1);">🌲 행사안내 · 2/2</div><div class="clock"></div></div>
+  <div class="main-area">
+    <div class="info-illus">
+      <svg viewBox="0 0 300 300" fill="none">
+        <path d="M40 240 L100 140 L140 190 L190 100 L260 240 Z" fill="#2F5233" opacity=".9"/>
+        <path d="M20 250 L80 170 L120 210 L170 140 L280 250 Z" fill="#4C7A4E" opacity=".8"/>
+        <circle cx="90" cy="90" r="30" fill="#8FB08A"/><rect x="84" y="110" width="12" height="30" fill="#5c3a1e"/>
+        <circle cx="210" cy="80" r="22" fill="#E8B94C" opacity=".8"/><rect x="204" y="98" width="10" height="26" fill="#5c3a1e"/>
+      </svg>
+    </div>
+    <div class="info-panel">
+      <span class="event-badge">📅 매주 토요일</span>
+      <div class="event-title">장성 편백숲 치유 프로그램</div>
+      <div class="event-meta">
+        <div class="event-row"><div class="ico">📍</div><div class="txt">축령산 편백숲 치유의 숲</div></div>
+        <div class="event-row"><div class="ico">🌲</div><div class="txt">숲 명상 · 걷기치유 · 무료 참여</div></div>
+        <div class="event-row"><div class="ico">📝</div><div class="txt">사전예약 필수 (홈페이지 접수)</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" id="slide-video">
+  <div class="video-frame" id="videoFrame">
+    <video id="videoPlayer" muted loop playsinline></video>
+    <div class="video-overlay-title">AI 클러스터 부지</div>
+    <label class="picker-btn floating" for="videoInput" onclick="event.stopPropagation()">📁 동영상 변경</label>
+    <div class="media-placeholder" id="videoPlaceholder">
+      <div class="ph-icon">🎬</div>
+      <div class="ph-text">등록된 동영상 콘텐츠가 없습니다</div>
+      <label class="picker-btn" for="videoInput" onclick="event.stopPropagation()">📁 동영상 찾기</label>
+    </div>
+    <input type="file" id="videoInput" accept="video/*" hidden onclick="event.stopPropagation()">
+  </div>
+</section>
+
+<section class="slide" id="slide-disaster">
+  <div class="head"><div class="clock"></div></div>
+  <div class="main-area">
+    <div class="disaster-wrap">
+      <div class="siren-wrap">
+        <div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div>
+        <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" fill="#fff"/><path d="M50 26 L64 68 L36 68 Z" fill="#7A1F1F"/><rect x="46" y="40" width="8" height="16" fill="#fff"/><circle cx="50" cy="62" r="4" fill="#fff"/></svg>
+      </div>
+      <div>
+        <span class="section-tag" style="background:#fff;color:#7A1F1F;">⚠ 재난·안전안내</span>
+        <div class="disaster-title">호우주의보 발효 중</div>
+        <div class="disaster-list">
+          <div class="disaster-row"><span class="ico">🚫</span><span class="txt">하천·저지대 접근을 금지합니다</span></div>
+          <div class="disaster-row"><span class="ico">📢</span><span class="txt">안내방송 시 즉시 대피소로 이동하세요</span></div>
+          <div class="disaster-row"><span class="ico">☎</span><span class="txt">문의 : 장성군 재난안전대책본부 061-390-0000</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="dots">
+  <span class="dot active" data-i="0"></span><span class="dot" data-i="1"></span><span class="dot" data-i="2"></span><span class="dot" data-i="3"></span><span class="dot" data-i="4"></span><span class="dot" data-i="5"></span><span class="dot" data-i="6"></span><span class="dot" data-i="7"></span><span class="dot" data-i="8"></span>
+</div>
+<div class="tap-hint">화면을 클릭하면 다음 안내로 이동합니다</div>
+
+</div></div>
+<script>
+const stage=document.getElementById('stage');
+function fit(){const s=Math.min(window.innerWidth/1920, window.innerHeight/1080);stage.style.transform=`scale(${s})`;}
+window.addEventListener('resize',fit); fit();
+const slides=[...document.querySelectorAll('.slide')];
+const dots=[...document.querySelectorAll('.dot')];
+let cur=0;
+function go(i){slides[cur].classList.remove('active');dots[cur].classList.remove('active');cur=(i+slides.length)%slides.length;slides[cur].classList.add('active');dots[cur].classList.add('active');}
+dots.forEach(d=>d.addEventListener('click',e=>{e.stopPropagation();go(+d.dataset.i);}));
+stage.addEventListener('click',()=>go(cur+1));
+function tick(){const d=new Date();const w=['일','월','화','수','목','금','토'];document.querySelectorAll('.clock').forEach(el=>{el.textContent=`${d.getMonth()+1}월 ${d.getDate()}일(${w[d.getDay()]}) ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;});}
+tick(); setInterval(tick,10000);
+
+document.getElementById('imageInput').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const url=URL.createObjectURL(f);
+  const frame=document.getElementById('imageFrame');
+  frame.style.backgroundImage=`url(${url})`;
+  frame.classList.add('has-content');
+});
+document.getElementById('videoInput').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const url=URL.createObjectURL(f);
+  const vid=document.getElementById('videoPlayer');
+  vid.src=url; vid.play().catch(()=>{});
+  document.getElementById('videoFrame').classList.add('has-content');
+});
+</script>
+</body>
+</html>

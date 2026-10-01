@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SmartBIS · 장성군 운영 대시보드</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Malgun Gothic", sans-serif; background: #f1f5f8; color: #172c40; }
+    .shell { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+    aside { background: #123247; color: white; padding: 30px 20px; }
+    aside h2 { margin: 0 0 8px; } aside p { color: #b9d1df; font-size: 13px; }
+    aside a { display: block; margin-top: 30px; background: #246078; padding: 14px; color: white; text-decoration: none; border-radius: 8px; }
+    main { min-width: 0; padding: 32px; } h1 { margin: 0; font-size: 28px; }
+    .intro { color: #52677b; line-height: 1.7; }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .card { background: white; border: 1px solid #dce5ec; border-radius: 12px; padding: 22px; }
+    .stats strong { display: block; font-size: 32px; margin-top: 10px; }
+    form { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 22px 0; }
+    label { display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+    input, select, button { font: inherit; padding: 11px; border: 1px solid #b6c7d5; border-radius: 6px; }
+    button { background: #096b7c; color: white; cursor: pointer; } button:disabled { opacity: .5; cursor: default; }
+    #q { width: min(380px, 80vw); } .table-wrap { overflow: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 14px 10px; border-bottom: 1px solid #e2e9ef; vertical-align: top; }
+    th { background: #f4f8fb; white-space: nowrap; } td { overflow-wrap: anywhere; }
+    #message { padding: 12px 0; } .failure { color: #a12232; }
+    .paging { display: flex; align-items: center; gap: 16px; margin-top: 18px; }
+    #detail { margin-top: 20px; } pre { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
+    .footnote { color: #52677b; font-size: 13px; line-height: 1.7; }
+    :root { --nav: #10364a; --accent: #087f8b; --line: #d8e3e8; }
+    aside { background: var(--nav); }
+    .nav { margin-top: 28px; }
+    .nav button { display: block; width: 100%; border: 0; background: transparent; color: #d4e5e9; text-align: left; margin: 5px 0; padding: 14px; }
+    .nav button.active { background: #1d6b78; color: white; }
+    button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #357bba; outline-offset: 3px; }
+    .topbar { margin: -32px -32px 26px; padding: 20px 32px; background: white; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 16px; }
+    .topbar span { color: #52677b; font-size: 13px; }
+    .section-title { margin-top: 26px; }
+    [hidden] { display: none !important; }
+    .policy-input { width: 105px; } .pending { border-left: 4px solid #087f8b; line-height: 1.8; }
+    aside { position: sticky; top: 0; height: 100vh; }
+    main { max-width: 1700px; width: 100%; }
+    .topbar { align-items: center; min-height: 76px; }
+    .nav button.active { box-shadow: inset 4px 0 #a7d4ce; }
+    .nav button:hover { background: #24556a; }
+    .card { border-radius: 10px; }
+    th { font-size: 13px; letter-spacing: .02em; color: #536879; }
+    tbody tr:hover { background: #f7fafb; }
+    .tag { display: inline-block; padding: 5px 9px; border-radius: 5px; background: #e8f3f0; color: #24645a; font-size: 13px; }
+    .danger { background: white; color: #a22b38; border-color: #dbb8be; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .format-list { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; margin-top: 18px; }
+    .format-list article { padding: 16px; border-left: 3px solid #087f8b; background: #f5f9fa; }
+    .format-list p { font-size: 14px; color: #52677b; line-height: 1.7; }
+    @media (max-width: 800px) { aside { position: static; height: auto; } .format-list { grid-template-columns: 1fr; } }
+    @media (max-width: 800px) { .topbar { margin: -18px -18px 20px; padding: 18px; } .nav { display: flex; flex-wrap: wrap; margin-top: 12px; } .nav button { width: auto; } }
+    @media (max-width: 800px) { .shell { grid-template-columns: 1fr; } aside { padding: 16px; } aside a { margin-top: 10px; } main { padding: 18px; } .stats { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside><h2>SmartBIS</h2><p>장성군 운영 대시보드</p>
+      <nav class="nav" aria-label="운영 메뉴">
+        <button type="button" data-view="home">운영 현황</button>
+        <button type="button" data-view="approval">데이터 관리</button>
+        <button type="button" data-view="policy">표출 정책</button>
+        <button type="button" data-view="collect">수집 상태</button>
+        <button type="button" data-view="monitor">표출 모니터</button>
+        <button type="button" data-view="errors">오류 관리</button>
+      </nav><p>A. 좌측 메뉴형<br>관리자 전용 · ADMIN 권한</p>
+    </aside>
+    <main>
+      <header class="topbar"><strong id="page-title">운영 현황</strong><span><span id="admin-identity">로그인 확인 중</span> · <button id="logout" type="button">로그아웃</button></span></header>
+      <section data-panel="home">
+        <h1>운영 현황</h1><p class="intro">콘텐츠 수집 오류와 표출 정책을 확인합니다. 실서비스 상태는 확인된 정보만 표시합니다.</p>
+        <div class="stats">
+          <div class="card">최근 3일 오류<strong id="home-recent">—</strong></div>
+          <div class="card">전체 미해결<strong id="home-open">—</strong></div>
+          <div class="card">전체 해결<strong id="home-resolved">—</strong></div>
+        </div>
+        <p id="home-message" role="status"></p>
+        <div class="card"><h2>현재 연결 범위</h2><table><thead><tr><th>기능</th><th>구현 상태</th><th>바로가기</th></tr></thead><tbody>
+          <tr><td>오류 관리</td><td>DB 요약 · 최근 3일 · 전체 검색 연결</td><td><button type="button" data-view="errors">오류 확인</button></td></tr>
+          <tr><td>표출 정책</td><td>DB 조회 · 유형별 설정 저장 연결</td><td><button type="button" data-view="policy">정책 설정</button></td></tr>
+          <tr><td>TAGO</td><td>인증 오류로 연동 보류</td><td>포털 문의 예정</td></tr>
+          <tr><td>재난문자</td><td>실서비스 승인 후 테스트 예정</td><td>승인 대기</td></tr>
+        </tbody></table></div>
+      </section>
+      <section data-panel="approval" hidden>
+        <h1>데이터 관리</h1><p class="intro">내부망에서 승인된 홍보 데이터를 수신합니다. 게시 상태를 중지·재개하거나 게시 목록에서 제외할 수 있습니다.</p>
+        <div class="card">
+          <form id="content-filters"><label>목록 내 검색<input id="content-search" placeholder="제목 · 콘텐츠 ID · 유형"></label><label>게시 상태<select id="content-status"><option value="ACTIVE">게시 중</option><option value="PAUSED">중지</option><option value="REMOVED">게시 제외</option><option value="ALL">전체 상태</option></select></label><button type="submit">검색</button><button id="reload-contents" type="button">DB 새로고침</button></form>
+          <p id="content-message" role="status" aria-live="polite"></p>
+          <p class="footnote">‘중지’는 다음 표출 선택부터 제외하고, ‘게시 제외’는 홍보 목록과 표출 대상에서 제외합니다. 둘 다 DB 콘텐츠와 미디어 파일·수신 이력은 보존합니다. 변경자는 로그인한 관리자 계정으로 자동 기록됩니다.</p>
+          <div class="table-wrap"><table><thead><tr><th>콘텐츠 / 제목</th><th>유형 / 템플릿</th><th>게시 기간</th><th>대상 지역</th><th>상태 / 마지막 변경</th><th>관리</th></tr></thead><tbody id="content-rows"></tbody></table></div>
+        </div>
+        <section id="content-detail" class="card" hidden><h2>콘텐츠 상세</h2><pre id="content-detail-text"></pre><p class="footnote">게시 제외는 논리 삭제입니다. 파일을 지우지 않으며, 상태를 다시 ‘게시 중’으로 바꾸면 복구할 수 있습니다.</p><button id="close-content-detail" type="button">닫기</button></section>
+        <div class="card"><h2>협의된 표출 형식 · 데이터 구조 확정 대기</h2><p class="footnote">업무 종류(공지·행사·재난정보·동영상)와 화면 형식은 구분합니다. 아래 이름은 UI 설명이며 아직 JSON 코드가 아닙니다.</p><div class="format-list">
+          <article><strong>텍스트 + 포스터</strong><p>공지·행사 · 전체 화면 안에서 좌측 포스터, 우측 큰 텍스트</p></article>
+          <article><strong>텍스트 전용</strong><p>공지·행사 · 전체 화면에 긴 안내문 맵핑, 포스터는 표출하지 않음</p></article>
+          <article><strong>카드뉴스</strong><p>공지·행사 · 여러 이미지 순차 재생, 전체 재생 종료 후 다음 콘텐츠</p></article>
+          <article><strong>단일 이미지</strong><p>전체 화면에 이미지 한 장 표출</p></article>
+          <article><strong>재난정보</strong><p>기존 방식 유지 · 반복 정책 변경안은 결정 후 반영</p></article>
+          <article><strong>동영상</strong><p>전체 화면 재생 · 제목 오버레이 · 재생 종료 후 다음 콘텐츠</p></article>
+        </div></div>
+      </section>
+      <section data-panel="policy" hidden><h1>표출 정책</h1><p class="intro">유형별 표출 시간·반복 간격·우선순위·사용 여부를 변경합니다. 행마다 저장하면 정책 DB에 반영됩니다.</p>
+        <p class="intro">협의 반영 예정: 새 카드뉴스는 전체 재생 종료 시 전환합니다. 현재 DB의 CARD는 기존 텍스트형 코드이므로 아직 새 카드뉴스로 변경하지 않았습니다. 재난 반복 간격도 기존 값을 유지합니다.</p>
+        <div class="card"><p class="footnote">변경자는 로그인한 관리자 계정으로 자동 기록됩니다. 시간 공란은 제한 없음으로 저장됩니다. 동영상 시간 공란은 재생 종료 전환을 위한 설정입니다.</p><button id="reload-policies" type="button">정책 새로고침</button><p id="policy-message" role="status" aria-live="polite"></p><div class="table-wrap"><table><thead><tr><th>유형</th><th>표출 시간(초)</th><th>반복 간격(초)</th><th>우선순위</th><th>사용</th><th>저장</th></tr></thead><tbody id="policy-rows"></tbody></table></div></div>
+      </section>
+      <section data-panel="collect" hidden><h1>수집 상태</h1><p class="intro">수집원별 상태와 최근 처리 결과를 확인하는 화면입니다.</p><div class="card"><table><thead><tr><th>수집원</th><th>확인된 상태</th></tr></thead><tbody><tr><td>TAGO</td><td>인증 문제 보류 · 실서비스 자동 수집 비활성 설정</td></tr><tr><td>재난문자</td><td>사용 승인 전 · 실서비스 검증 대기</td></tr><tr><td>Node watcher</td><td>실시간 상태 API 미연결 · 오류 기록은 오류 관리에서 조회</td></tr></tbody></table></div></section>
+      <section data-panel="monitor" hidden><h1>표출 모니터</h1><p class="intro">차량별 현재 표출과 연결 상태를 확인합니다.</p><div class="card pending"><h2>차량 상태 보고 연결 예정</h2><p>실제 클라이언트 상태 보고 API를 연결한 후 표시합니다. 화면 조회만으로 차량의 표출 순서를 변경하지 않도록, 순서를 진행시키는 /display/next API를 모니터용으로 호출하지 않습니다.</p></div></section>
+      <section data-panel="errors" hidden>
+      <h1>수집 오류 관리</h1>
+      <p class="intro">최근 3일 오류를 자동 조회합니다. 이전 기록은 전체 기간으로 검색하세요.<br>오류 원본을 삭제하거나 자동으로 해결 처리하지 않습니다.</p>
+      <div class="stats">
+        <div class="card">최근 3일 발생<strong id="recent">—</strong></div>
+        <div class="card">전체 미해결<strong id="open">—</strong></div>
+        <div class="card">전체 해결<strong id="resolved">—</strong></div>
+      </div>
+      <form id="filters">
+        <label>조회 기간<select id="period"><option value="recent">최근 3일</option><option value="all">전체 기간</option></select></label>
+        <label>처리 상태<select id="status"><option value="">전체 상태</option><option value="OPEN">미해결</option><option value="WAITING_PROVIDER">제공측 확인 대기</option><option value="RETRY_REQUESTED">재처리 요청</option><option value="RESOLVED">해결</option></select></label>
+        <label>검색어<input id="q" placeholder="배치 · 콘텐츠 · 오류 내용 · 원본 경로"></label>
+        <button type="submit">검색 / 새로고침</button>
+      </form>
+      <section class="card" aria-label="오류 목록">
+        <div id="message" role="status" aria-live="polite">조회 준비 중</div>
+        <div class="table-wrap"><table><thead><tr><th>발생일시</th><th>배치 / 콘텐츠</th><th>오류 코드 / 사유</th><th>상태</th><th>상세</th></tr></thead><tbody id="rows"></tbody></table></div>
+        <div class="paging"><button id="prev" type="button">이전</button><span id="page"></span><button id="next" type="button">다음</button></div>
+      </section>
+      <section id="detail" class="card" hidden><h2>오류 상세 · 읽기 전용</h2><pre id="detailText"></pre><button id="close" type="button">닫기</button></section>
+      <p class="footnote">검색은 위 목록 API가 제공하는 배치·콘텐츠·오류 코드·사유·상태·상세 데이터·원본 경로를 대상으로 합니다.<br>관리자 인증이 적용되어 있습니다.</p>
+      </section>
+    </main>
+  </div>
+  <script>
+    'use strict';
+    const byId = id => document.getElementById(id);
+    const endpoint = new URL('../v1/admin/ingest-errors', location.href);
+    const statuses = { OPEN: '미해결', WAITING_PROVIDER: '제공측 확인 대기', RETRY_REQUESTED: '재처리 요청', RESOLVED: '해결' };
+    const limit = 50;
+    let offset = 0;
+    let busy = false;
+    let more = false;
+    let query = { all: 'false', q: '', status: '' };
+    async function json(url) {
+      const response = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+      if (!response.ok) throw new Error(`서버 응답 HTTP ${response.status}`);
+      return response.json();
+    }
+    async function csrfHeaders(extra = {}) {
+      const token = await json(new URL('../csrf', location.href));
+      return { ...extra, [token.headerName]: token.token };
+    }
+    function paging() {
+      byId('prev').disabled = busy || offset === 0;
+      byId('next').disabled = busy || !more;
+      byId('page').textContent = `${offset / limit + 1} 페이지 · 최대 ${limit}건`;
+    }
+    function cell(row, value) {
+      const td = document.createElement('td');
+      td.textContent = value == null ? '—' : String(value);
+      row.append(td);
+      return td;
+    }
+    async function load() {
+      if (busy) return;
+      busy = true;
+      paging();
+      byId('message').className = '';
+      byId('message').textContent = '조회 중…';
+      byId('rows').replaceChildren();
+      byId('detail').hidden = true;
+      ['recent', 'open', 'resolved'].forEach(id => byId(id).textContent = '—');
+      try {
+        const url = new URL(endpoint);
+        url.search = new URLSearchParams({ ...query, limit: String(limit + 1), offset: String(offset) });
+        const [summary, records] = await Promise.all([json(`${endpoint}/summary`), json(url)]);
+        byId('recent').textContent = summary.recent_3day_count;
+        byId('open').textContent = summary.open_count;
+        byId('resolved').textContent = summary.resolved_count;
+        more = records.length > limit;
+        records.slice(0, limit).forEach(item => {
+          const row = document.createElement('tr');
+          cell(row, new Date(item.created_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }));
+          cell(row, `${item.batch_id} / ${item.content_id || '배치 전체'}`);
+          cell(row, `${item.error_code}: ${item.error_message}`);
+          cell(row, statuses[item.status] || item.status);
+          const button = document.createElement('button');
+          button.type = 'button'; button.textContent = '상세 보기';
+          button.addEventListener('click', () => {
+            byId('detailText').textContent = JSON.stringify(item, null, 2);
+            byId('detail').hidden = false;
+            byId('detail').scrollIntoView({ behavior: 'smooth', block: 'start' });
+          });
+          cell(row, '').append(button);
+          byId('rows').append(row);
+        });
+        byId('message').textContent = records.length ? `${query.all === 'true' ? '전체 기간' : '최근 3일'} · 이 페이지 ${Math.min(limit, records.length)}건 (한국 시간)` : '조회 조건에 해당하는 오류가 없습니다.';
+      } catch (error) {
+        more = false;
+        byId('message').className = 'failure';
+        byId('message').textContent = `조회 실패: ${error.message}. HTTPS 인증서 신뢰 여부와 서버 상태를 확인한 뒤 다시 조회하세요.`;
+      } finally { busy = false; paging(); }
+    }
+    byId('filters').addEventListener('submit', event => {
+      event.preventDefault();
+      if (busy) return;
+      query = { all: String(byId('period').value === 'all'), q: byId('q').value.trim(), status: byId('status').value };
+      offset = 0; load();
+    });
+    byId('prev').addEventListener('click', () => { if (!busy) { offset = Math.max(0, offset - limit); load(); } });
+    byId('next').addEventListener('click', () => { if (!busy && more) { offset += limit; load(); } });
+    byId('close').addEventListener('click', () => byId('detail').hidden = true);
+    // The A-layout navigation shows only the selected menu's panel.
+    const titles = { home: '운영 현황', approval: '데이터 관리', policy: '표출 정책', collect: '수집 상태', monitor: '표출 모니터', errors: '오류 관리' };
+    let contentRecords = [];
+    function renderContents() {
+      const search = byId('content-search').value.trim().toLocaleLowerCase('ko-KR');
+      const records = contentRecords.filter(item => [item.contentId, item.title, item.contentType, item.template].join(' ').toLocaleLowerCase('ko-KR').includes(search));
+      byId('content-rows').replaceChildren();
+      for (const item of records) {
+        const row = document.createElement('tr');
+        cell(row, `${item.contentId}\n${item.title}`);
+        cell(row, `${item.contentType} / ${item.template}`);
+        cell(row, `${item.displayStartDate || '시작 제한 없음'} ~ ${item.displayEndDate || '종료 제한 없음'}`);
+        cell(row, item.targetRegions == null ? '전체 지역' : item.targetRegions.join(', '));
+        const changed = item.updatedAt ? `${item.updatedBy || '담당자 미상'} · ${new Date(item.updatedAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}` : '—';
+        cell(row, `${{ ACTIVE: '게시 중', PAUSED: '중지', REMOVED: '게시 제외' }[item.publicationStatus] || item.publicationStatus}\n${changed}`);
+        const actions = document.createElement('div'); actions.className = 'actions';
+        const detail = document.createElement('button'); detail.type = 'button'; detail.textContent = '상세';
+        detail.addEventListener('click', () => {
+          byId('content-detail-text').textContent = JSON.stringify(item, null, 2);
+          byId('content-detail').hidden = false;
+          byId('content-detail').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        actions.append(detail);
+        const action = (label, nextStatus, className = '') => {
+          const button = document.createElement('button'); button.type = 'button'; button.textContent = label;
+          if (className) button.className = className;
+          button.addEventListener('click', () => changePublicationState(item, nextStatus, button));
+          actions.append(button);
+        };
+        if (item.publicationStatus === 'ACTIVE') action('중지', 'PAUSED');
+        else action('재개', 'ACTIVE');
+        if (item.publicationStatus !== 'REMOVED') action('게시 제외', 'REMOVED', 'danger');
+        cell(row, '').append(actions); byId('content-rows').append(row);
+      }
+      byId('content-message').textContent = records.length ? `현재 게시 기간에 해당하는 콘텐츠 ${records.length}건 · 상태: ${{ ACTIVE: '게시 중', PAUSED: '중지', REMOVED: '게시 제외', ALL: '전체' }[byId('content-status').value]}` : '조회 조건에 해당하는 홍보 콘텐츠가 없습니다.';
+    }
+    async function contents() {
+      byId('content-message').textContent = '조회 중…';
+      byId('content-rows').replaceChildren(); byId('content-detail').hidden = true;
+      try {
+        const url = new URL('../v1/admin/contents', location.href);
+        url.searchParams.set('status', byId('content-status').value);
+        contentRecords = await json(url);
+        renderContents();
+      } catch (error) { contentRecords = []; byId('content-message').textContent = `조회 실패: ${error.message}`; }
+    }
+    async function loadAdminIdentity() {
+      const session = await json(new URL('../v1/admin/session', location.href));
+      byId('admin-identity').textContent = `${session.username} · ${(session.roles || []).join(', ')}`;
+    }
+    async function changePublicationState(item, status, button) {
+      const messages = {
+        PAUSED: '중지하면 이미 재생 중인 항목은 재생을 마친 뒤 다음 표출부터 제외됩니다. 파일과 DB 기록은 유지됩니다.',
+        REMOVED: '게시 목록에서 제외합니다. 파일·DB 콘텐츠·수신 이력은 삭제되지 않으며 전체 상태에서 복구할 수 있습니다.',
+        ACTIVE: '게시 대상으로 다시 활성화합니다.'
+      };
+      if (!confirm(`${item.title}\n\n${messages[status]}`)) return;
+      button.disabled = true;
+      try {
+        const response = await fetch(`../v1/admin/contents/${encodeURIComponent(item.contentId)}/publication-state`, {
+          method: 'PUT', headers: await csrfHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
+          body: JSON.stringify({ status })
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        byId('content-message').textContent = `${item.contentId} 상태 변경 완료`;
+        await contents();
+      } catch (error) {
+        byId('content-message').textContent = `상태 변경 실패: ${error.message}. 목록을 새로고침해 현재 DB 상태를 확인하세요.`;
+        button.disabled = false;
+      }
+    }
+    byId('content-filters').addEventListener('submit', event => { event.preventDefault(); contents(); });
+    byId('reload-contents').addEventListener('click', contents);
+    byId('close-content-detail').addEventListener('click', () => byId('content-detail').hidden = true);
+    async function overview() {
+      try {
+        const summary = await json(`${endpoint}/summary`);
+        byId('home-recent').textContent = summary.recent_3day_count;
+        byId('home-open').textContent = summary.open_count;
+        byId('home-resolved').textContent = summary.resolved_count;
+        byId('home-message').textContent = 'DB 오류 요약 조회 완료';
+      } catch (error) {
+        ['home-recent', 'home-open', 'home-resolved'].forEach(id => byId(id).textContent = '—');
+        byId('home-message').textContent = `조회 실패: ${error.message}`;
+      }
+    }
+    const policyEndpoint = new URL('../v1/admin/display-policies', location.href);
+    function numberInput(value, title, positive) {
+      const input = document.createElement('input');
+      input.type = 'number'; input.step = '1'; input.className = 'policy-input';
+      if (positive) input.min = '1';
+      input.value = value == null ? '' : value;
+      input.setAttribute('aria-label', title);
+      return input;
+    }
+    async function policies() {
+      byId('policy-message').textContent = '조회 중…';
+      byId('reload-policies').disabled = true;
+      byId('policy-rows').replaceChildren();
+      try {
+        const items = await json(policyEndpoint);
+        for (const item of items) {
+          const row = document.createElement('tr');
+          cell(row, item.policy_key);
+          const seconds = numberInput(item.display_seconds, `${item.policy_key} 표출 시간`, true);
+          const interval = numberInput(item.repeat_interval_seconds, `${item.policy_key} 반복 간격`, true);
+          const priority = numberInput(item.priority, `${item.policy_key} 우선순위`, false);
+          priority.required = true;
+          cell(row, '').append(seconds); cell(row, '').append(interval); cell(row, '').append(priority);
+          const enabled = document.createElement('input'); enabled.type = 'checkbox'; enabled.checked = item.enabled;
+          enabled.setAttribute('aria-label', `${item.policy_key} 사용`); cell(row, '').append(enabled);
+          const save = document.createElement('button'); save.type = 'button'; save.textContent = '저장'; cell(row, '').append(save);
+          save.addEventListener('click', async () => {
+            if (![seconds, interval, priority].every(input => input.reportValidity())) return;
+            if (!confirm(`${item.policy_key} 정책을 저장하시겠습니까? 실제 표출 설정이 변경됩니다.`)) return;
+            save.disabled = true;
+            try {
+              const response = await fetch(`${policyEndpoint}/${encodeURIComponent(item.policy_key)}`, {
+                method: 'PUT', headers: await csrfHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
+                body: JSON.stringify({ displaySeconds: seconds.value === '' ? null : Number(seconds.value), repeatIntervalSeconds: interval.value === '' ? null : Number(interval.value), priority: Number(priority.value), enabled: enabled.checked })
+              });
+              if (!response.ok) throw new Error(`HTTP ${response.status}`);
+              await response.json();
+              byId('policy-message').textContent = `${item.policy_key} 정책 저장 완료`;
+            } catch (error) { byId('policy-message').textContent = `저장 실패: ${error.message}. 입력 내용을 유지했습니다.`; }
+            finally { save.disabled = false; }
+          });
+          byId('policy-rows').append(row);
+        }
+        byId('policy-message').textContent = `${items.length}개 정책 조회 완료`;
+      } catch (error) { byId('policy-message').textContent = `조회 실패: ${error.message}`; }
+      finally { byId('reload-policies').disabled = false; }
+    }
+    function navigate(view) {
+      if (!titles[view]) view = 'home';
+      document.querySelectorAll('[data-panel]').forEach(panel => panel.hidden = panel.dataset.panel !== view);
+      document.querySelectorAll('.nav [data-view]').forEach(button => {
+        button.classList.toggle('active', button.dataset.view === view);
+        if (button.dataset.view === view) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
+      });
+      byId('page-title').textContent = titles[view];
+      if (view === 'home') overview();
+      if (view === 'approval') contents();
+      if (view === 'errors') load();
+      if (view === 'policy') policies();
+    }
+    document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => { location.hash = button.dataset.view; }));
+    window.addEventListener('hashchange', () => navigate(location.hash.slice(1)));
+    byId('reload-policies').addEventListener('click', policies);
+    byId('logout').addEventListener('click', async () => {
+      byId('logout').disabled = true;
+      try {
+        const response = await fetch('../dashboard/logout', {
+          method: 'POST', headers: await csrfHeaders({ Accept: 'text/html' })
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        location.assign('../dashboard/login.html?logout');
+      } catch (error) {
+        byId('admin-identity').textContent = `로그아웃 실패: ${error.message}`;
+        byId('logout').disabled = false;
+      }
+    });
+    loadAdminIdentity().catch(error => { byId('admin-identity').textContent = `세션 확인 실패: ${error.message}`; });
+    navigate(location.hash.slice(1));
+  </script>
+</body>
+</html>

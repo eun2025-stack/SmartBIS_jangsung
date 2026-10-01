@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1920, initial-scale=1">
+<title>장성군 시내버스 안내 - 안2 고대비 접근성 (개선)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --blue:#3B82F6; --green:#22C55E; --purple:#A855F7; --red:#EF4444; --yellow:#FFD400;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'Noto Sans KR',sans-serif;}
+#stageWrap{width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;background:#000;}
+#stage{position:relative;width:1920px;height:1080px;overflow:hidden;flex-shrink:0;background:#000;cursor:pointer;}
+.slide{position:absolute;inset:0;opacity:0;pointer-events:none;transition:opacity .5s ease-in-out;display:flex;flex-direction:column;}
+.slide.active{opacity:1;pointer-events:auto;}
+.top-bar{flex:0 0 10px;width:100%;}
+.blob{position:absolute;border-radius:50%;filter:blur(100px);opacity:.22;z-index:0;pointer-events:none;}
+
+.head{flex:0 0 150px;display:flex;align-items:center;justify-content:space-between;padding:0 64px;position:relative;z-index:2;}
+.tag{font-size:38px;font-weight:700;letter-spacing:3px;color:#fff;padding:12px 30px;border-radius:14px;}
+.clock{font-size:32px;color:#cfd8e3;font-weight:700;}
+
+.main-area{flex:1 1 auto;position:relative;z-index:2;display:flex;align-items:center;justify-content:center;padding:0 90px;}
+.card{background:rgba(255,255,255,.06);border:2px solid rgba(255,255,255,.14);border-radius:32px;box-shadow:0 20px 50px rgba(0,0,0,.5);}
+
+/* 1. 정류소 도착정보 */
+#slide-stop{background:#000;}
+#slide-stop .top-bar{background:var(--blue);}
+#slide-stop .tag{background:var(--blue);}
+.stop-card{width:100%;max-width:1620px;padding:50px 80px;text-align:center;}
+.stop-main .label{font-size:40px;color:#9fb8ff;font-weight:700;letter-spacing:2px;}
+.stop-main .cur-stop{font-size:158px;font-weight:700;margin:16px 0;color:#fff;letter-spacing:2px;line-height:1.15;}
+.arrow{font-size:52px;color:var(--blue);margin:6px 0;}
+.next-stop{font-size:104px;font-weight:700;color:var(--blue);margin-top:8px;}
+.route-panel{flex:0 0 260px;margin:0 64px 40px;padding:24px 56px 18px;position:relative;z-index:2;}
+.route-title{font-size:26px;color:#9fb8ff;font-weight:700;letter-spacing:2px;margin-bottom:20px;}
+.route-line{position:relative;display:flex;justify-content:space-between;padding-top:8px;}
+.route-line::before{content:'';position:absolute;top:24px;left:0;right:0;height:10px;background:#1e2a3d;border-radius:6px;}
+.route-fill{position:absolute;top:24px;left:0;height:10px;background:var(--blue);border-radius:6px;z-index:1;}
+.stop-node{position:relative;width:25%;display:flex;flex-direction:column;align-items:center;z-index:2;}
+.node-dot{width:46px;height:46px;border-radius:50%;background:#000;border:6px solid #34405a;display:flex;align-items:center;justify-content:center;font-size:24px;}
+.stop-node.passed .node-dot{background:var(--blue);border-color:var(--blue);}
+.stop-node.current .node-dot{width:74px;height:74px;background:var(--blue);border-color:#fff;box-shadow:0 0 0 0 rgba(59,130,246,.6);animation:pulse 1.6s infinite;}
+.node-name{margin-top:18px;font-size:30px;font-weight:700;color:#c9d3e2;text-align:center;}
+.stop-node.current .node-name{color:#fff;font-size:33px;}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(59,130,246,.6);}70%{box-shadow:0 0 0 28px rgba(59,130,246,0);}100%{box-shadow:0 0 0 0 rgba(59,130,246,0);}}
+.gov-badge{position:absolute;bottom:22px;left:64px;color:#6b6b6b;font-size:20px;font-weight:700;opacity:.55;z-index:3;}
+
+/* 2. 공지사항 */
+#slide-notice{background:#000;}
+#slide-notice .top-bar{background:var(--green);}
+#slide-notice .tag{background:var(--green);}
+.list-wrap{width:100%;max-width:1680px;display:flex;flex-direction:column;gap:30px;}
+.item-card{display:flex;align-items:center;gap:36px;padding:36px 50px;}
+.item-icon{flex:0 0 auto;width:100px;height:100px;border-radius:24px;background:rgba(34,197,94,.18);display:flex;align-items:center;justify-content:center;font-size:54px;}
+.item-title{font-size:46px;font-weight:700;color:#fff;margin-bottom:10px;}
+.item-body{font-size:32px;font-weight:500;color:#dfe8e0;line-height:1.5;}
+
+/* 3. 행사 */
+#slide-event{background:#000;}
+#slide-event .top-bar{background:var(--purple);}
+#slide-event .tag{background:var(--purple);}
+.event-grid{width:100%;max-width:1700px;display:flex;gap:44px;}
+.event-card{flex:1;padding:46px 42px;}
+.event-badge{display:inline-block;font-size:24px;font-weight:700;color:#ead9ff;background:rgba(168,85,247,.25);padding:8px 20px;border-radius:14px;margin-bottom:24px;}
+.event-title{font-size:44px;font-weight:700;color:#fff;margin-bottom:22px;line-height:1.3;}
+.event-meta{display:flex;flex-direction:column;gap:14px;}
+.event-meta div{font-size:28px;color:#ead9ff;font-weight:500;}
+
+/* 4. 재난정보 */
+#slide-disaster{background:linear-gradient(180deg,#7A0000,#4a0000);}
+#slide-disaster .top-bar{background:#fff;animation:flash 1s infinite;}
+@keyframes flash{0%,100%{opacity:1;}50%{opacity:.2;}}
+#slide-disaster .tag{background:#fff;color:#7A0000;}
+.disaster-card{width:100%;max-width:1600px;padding:56px 90px;text-align:center;background:rgba(0,0,0,.2);border-color:rgba(255,255,255,.2);}
+.warn-icon{font-size:130px;animation:warn 1s infinite;}
+@keyframes warn{0%,100%{transform:scale(1);}50%{transform:scale(1.14);}}
+.disaster-title{color:#fff;font-size:100px;font-weight:700;margin:24px 0;}
+.disaster-body{color:#ffe0e0;font-weight:700;font-size:40px;line-height:1.6;}
+
+.dots{position:absolute;bottom:26px;left:50%;transform:translateX(-50%);display:flex;gap:16px;z-index:10;}
+.dot{width:18px;height:18px;border-radius:50%;background:rgba(255,255,255,.25);cursor:pointer;}
+.dot.active{background:#fff;width:48px;border-radius:8px;}
+.tap-hint{position:absolute;bottom:22px;right:60px;font-size:20px;color:rgba(255,255,255,.4);font-weight:700;z-index:10;}
+</style>
+</head>
+<body>
+<div id="stageWrap"><div id="stage">
+
+  <section class="slide active" id="slide-stop">
+    <div class="blob" style="width:520px;height:520px;background:var(--blue);top:-160px;left:-100px;"></div>
+    <div class="top-bar"></div>
+    <div class="head">
+      <div class="tag">🚌 300번</div>
+      <div class="clock"></div>
+    </div>
+    <div class="main-area">
+      <div class="card stop-card stop-main">
+        <p class="label">이번 정류장</p>
+        <h1 class="cur-stop">장성터미널</h1>
+        <div class="arrow">▼</div>
+        <p class="label">다음 정류장</p>
+        <h2 class="next-stop">장성읍사무소</h2>
+      </div>
+    </div>
+    <div class="card route-panel">
+      <p class="route-title">🛣 전체 노선안내</p>
+      <div class="route-line">
+        <div class="route-fill" style="width:38%;"></div>
+        <div class="stop-node passed"><span class="node-dot"></span><span class="node-name">문화예술회관</span></div>
+        <div class="stop-node current"><span class="node-dot">🚌</span><span class="node-name">장성터미널</span></div>
+        <div class="stop-node"><span class="node-dot"></span><span class="node-name">장성읍사무소</span></div>
+        <div class="stop-node"><span class="node-dot"></span><span class="node-name">장성역</span></div>
+      </div>
+    </div>
+    <div class="gov-badge">장성군 시내버스 안내시스템</div>
+  </section>
+
+  <section class="slide" id="slide-notice">
+    <div class="blob" style="width:480px;height:480px;background:var(--green);top:-140px;right:-100px;"></div>
+    <div class="top-bar"></div>
+    <div class="head"><div class="tag">공지사항</div><div class="clock"></div></div>
+    <div class="main-area">
+      <div class="list-wrap">
+        <div class="card item-card">
+          <div class="item-icon">💳</div>
+          <div><div class="item-title">시내버스 요금 안내</div><div class="item-body">성인 1,400원 · 청소년 1,100원 · 어린이 700원 (교통카드 기준)</div></div>
+        </div>
+        <div class="card item-card">
+          <div class="item-icon">🛑</div>
+          <div><div class="item-title">노선 변경 안내</div><div class="item-body">11월 1일부터 상무대 경유 노선이 일부 변경됩니다.</div></div>
+        </div>
+        <div class="card item-card">
+          <div class="item-icon">📞</div>
+          <div><div class="item-title">분실물 안내</div><div class="item-body">분실물은 장성군 버스 종합상황실(061-390-0000)로 문의하세요.</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide" id="slide-event">
+    <div class="blob" style="width:520px;height:520px;background:var(--purple);bottom:-160px;left:-100px;"></div>
+    <div class="top-bar"></div>
+    <div class="head"><div class="tag">행사안내</div><div class="clock"></div></div>
+    <div class="main-area">
+      <div class="event-grid">
+        <div class="card event-card">
+          <span class="event-badge">📅 10.24 ~ 10.26</span>
+          <div class="event-title">2025 장성 홍길동 축제</div>
+          <div class="event-meta"><div>📍 홍길동테마파크</div><div>🎪 공연 · 체험 · 불꽃놀이</div></div>
+        </div>
+        <div class="card event-card">
+          <span class="event-badge">📅 매주 토요일</span>
+          <div class="event-title">장성 편백숲 치유 프로그램</div>
+          <div class="event-meta"><div>📍 축령산 편백숲</div><div>🌲 무료 참여 · 사전예약</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide" id="slide-disaster">
+    <div class="top-bar"></div>
+    <div class="head"><div class="tag">재난·안전안내</div><div class="clock"></div></div>
+    <div class="main-area">
+      <div class="card disaster-card">
+        <div class="warn-icon">⚠</div>
+        <div class="disaster-title">호우주의보 발효 중</div>
+        <div class="disaster-body">하천 주변 이동을 자제하시고 안내방송에 따라 안전에 유의하시기 바랍니다.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="dots">
+    <span class="dot active" data-i="0"></span><span class="dot" data-i="1"></span><span class="dot" data-i="2"></span><span class="dot" data-i="3"></span>
+  </div>
+  <div class="tap-hint">화면을 클릭하면 다음 안내로 이동합니다</div>
+
+</div></div>
+
+<script>
+const stage=document.getElementById('stage');
+function fit(){const s=Math.min(window.innerWidth/1920, window.innerHeight/1080);stage.style.transform=`scale(${s})`;}
+window.addEventListener('resize',fit); fit();
+
+const slides=[...document.querySelectorAll('.slide')];
+const dots=[...document.querySelectorAll('.dot')];
+let cur=0;
+function go(i){
+  slides[cur].classList.remove('active'); dots[cur].classList.remove('active');
+  cur=(i+slides.length)%slides.length;
+  slides[cur].classList.add('active'); dots[cur].classList.add('active');
+}
+dots.forEach(d=>d.addEventListener('click',e=>{e.stopPropagation(); go(+d.dataset.i);}));
+stage.addEventListener('click',()=>go(cur+1));
+
+function tick(){
+  const d=new Date(); const w=['일','월','화','수','목','금','토'];
+  document.querySelectorAll('.clock').forEach(el=>{
+    el.textContent = `${d.getMonth()+1}월 ${d.getDate()}일(${w[d.getDay()]}) ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  });
+}
+tick(); setInterval(tick,10000);
+</script>
+</body>
+</html>

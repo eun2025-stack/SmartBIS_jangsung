@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SmartBIS 관리자 로그인</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; background: #edf3f5; color: #183347; font-family: "Malgun Gothic", sans-serif; }
+    main { width: min(430px, 100%); padding: 36px; border: 1px solid #d5e1e7; border-radius: 16px; background: white; box-shadow: 0 18px 50px #18334718; }
+    h1 { margin: 0; font-size: 28px; } p { color: #587080; line-height: 1.7; }
+    label { display: block; margin: 18px 0; font-size: 14px; font-weight: 700; }
+    input { display: block; width: 100%; margin-top: 8px; padding: 13px; border: 1px solid #aec1cc; border-radius: 8px; font: inherit; }
+    button { width: 100%; margin-top: 10px; padding: 13px; border: 0; border-radius: 8px; background: #096b7c; color: white; font: inherit; font-weight: 700; cursor: pointer; }
+    .message { min-height: 24px; color: #a12232; } .ok { color: #17644d; }
+  </style>
+</head>
+<body><main>
+  <h1>SmartBIS 관리자 로그인</h1>
+  <p>대시보드와 운영 설정은 관리자 전용입니다. 차량 앱의 콘텐츠·도착 정보 API는 공개 범위를 유지합니다.</p>
+  <p id="message" class="message" role="status" aria-live="polite"></p>
+  <form method="post" action="login" autocomplete="on">
+    <input type="hidden" id="csrf-token" name="_csrf">
+    <label>관리자 계정<input name="username" autocomplete="username" required autofocus></label>
+    <label>비밀번호<input name="password" type="password" autocomplete="current-password" required></label>
+    <button id="login-button" type="submit" disabled>로그인</button>
+  </form>
+</main>
+<script>
+  const message = document.getElementById('message');
+  const params = new URLSearchParams(location.search);
+  if (params.has('error')) message.textContent = '계정 또는 비밀번호를 확인해 주세요.';
+  if (params.has('logout')) { message.textContent = '안전하게 로그아웃했습니다.'; message.className = 'message ok'; }
+  fetch('../csrf', { headers: { Accept: 'application/json' }, cache: 'no-store' })
+    .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+    .then(csrf => { document.getElementById('csrf-token').value = csrf.token; document.getElementById('login-button').disabled = false; })
+    .catch(() => { message.textContent = '보안 토큰을 가져오지 못했습니다. 새로고침 후 다시 시도하세요.'; });
+</script></body></html>

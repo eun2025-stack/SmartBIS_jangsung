@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>버스 정보 디스플레이 템플릿 - 3안</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: #1a1a1a;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #fff;
+            text-align: center;
+            margin-bottom: 40px;
+            font-size: 2.5em;
+        }
+
+        .template-set {
+            margin-bottom: 80px;
+        }
+
+        .set-title {
+            color: #4CAF50;
+            font-size: 2em;
+            margin-bottom: 30px;
+            text-align: center;
+            padding: 15px;
+            background: rgba(76, 175, 80, 0.1);
+            border-radius: 10px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 30px;
+        }
+
+        .template {
+            background: #fff;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            height: 600px;
+            position: relative;
+        }
+
+        .template-arrival {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+        }
+
+        .template-arrival::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+                radial-gradient(circle at 20% 50%, rgba(255,255,255,0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(255,255,255,0.1) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        .template-arrival .header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 30px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .template-arrival .icon {
+            width: 80px;
+            height: 80px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            margin-right: 20px;
+        }
+
+        .template-arrival h2 {
+            font-size: 2.5em;
+        }
+
+        .bus-list {
+            position: relative;
+            z-index: 1;
+        }
+
+        .bus-item {
+            background: rgba(255,255,255,0.95);
+            color: #333;
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .bus-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+            min-width: 120px;
+        }
+
+        .bus-time {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #e74c3c;
+        }
+
+        .template-notice {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            padding: 40px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .template-notice::before {
+            content: '📢';
+            position: absolute;
+            font-size: 400px;
+            opacity: 0.1;
+            right: -50px;
+            bottom: -100px;
+        }
+
+        .template-notice .header {
+            position: relative;
+            z-index: 1;
+            margin-bottom: 30px;
+        }
+
+        .template-notice .icon {
+            width: 100px;
+            height: 100px;
+            background: rgba(255,255,255,0.3);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 50px;
+            margin: 0 auto 20px;
+        }
+
+        .template-notice h2 {
+            color: white;
+            font-size: 2.5em;
+            text-align: center;
+        }
+
+        .notice-content {
+            background: rgba(255,255,255,0.95);
+            padding: 40px;
+            border-radius: 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .notice-content h3 {
+            color: #f5576c;
+            font-size: 2em;
+            margin-bottom: 20px;
+        }
+
+        .notice-content p {
+            color: #333;
+            font-size: 1.4em;
+            line-height: 1.8;
+        }
+
+        .template-event {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            padding: 40px;
+            position: relative;
+        }
+
+        .template-event::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: url('data:image/svg+xml,<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="40" fill="rgba(255,255,255,0.1)"/></svg>');
+            background-size: 100px 100px;
+            opacity: 0.3;
+        }
+
+        .template-event .header {
+            position: relative;
+            z-index: 1;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .template-event .icon {
+            width: 120px;
+            height: 120px;
+            background: rgba(255,255,255,0.3);
+            border-radius: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 60px;
+            margin: 0 auto 20px;
+            transform: rotate(-10deg);
+        }
+
+        .template-event h2 {
+            color: white;
+            font-size: 2.5em;
+        }
+
+        .event-content {
+            background: rgba(255,255,255,0.95);
+            padding: 40px;
+            border-radius: 20px;
+            position: relative;
+            z-index: 1;
+            text-align: center;
+        }
+
+        .event-content h3 {
+            color: #4facfe;
+            font-size: 2.2em;
+            margin-bottom: 20px;
+        }
+
+        .event-content .date {
+            font-size: 1.6em;
+            color: #666;
+            margin-bottom: 20px;
+        }
+
+        .event-content p {
+            font-size: 1.3em;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .template-emergency {
+            background: linear-gradient(135deg, #ff6b6b 0%, #c92a2a 100%);
+            padding: 40px;
+            position: relative;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.9; }
+        }
+
+        .template-emergency::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: repeating-linear-gradient(
+                45deg,
+                transparent,
+                transparent 35px,
+                rgba(255,255,255,0.1) 35px,
+                rgba(255,255,255,0.1) 70px
+            );
+        }
+
+        .template-emergency .header {
+            position: relative;
+            z-index: 1;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .template-emergency .icon {
+            width: 120px;
+            height: 120px;
+            background: rgba(255,255,255,0.3);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 60px;
+            margin: 0 auto 20px;
+            border: 5px solid rgba(255,255,255,0.5);
+        }
+
+        .template-emergency h2 {
+            color: white;
+            font-size: 2.8em;
+            font-weight: bold;
+        }
+
+        .emergency-content {
+            background: rgba(255,255,255,0.98);
+            padding: 40px;
+            border-radius: 20px;
+            position: relative;
+            z-index: 1;
+            border: 4px solid rgba(255,255,255,0.5);
+        }
+
+        .emergency-content h3 {
+            color: #c92a2a;
+            font-size: 2.2em;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+
+        .emergency-content p {
+            font-size: 1.5em;
+            color: #333;
+            line-height: 1.8;
+            font-weight: 500;
+        }
+
+        .template-set-2 .template-arrival {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        }
+
+        .template-set-2 .bus-item {
+            background: rgba(255,255,255,0.95);
+        }
+
+        .template-set-2 .bus-number {
+            color: #11998e;
+        }
+
+        .template-set-2 .template-notice {
+            background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+        }
+
+        .template-set-2 .notice-content h3 {
+            color: #eb3349;
+        }
+
+        .template-set-2 .template-event {
+            background: linear-gradient(135deg, #fc466b 0%, #3f5efb 100%);
+        }
+
+        .template-set-2 .event-content h3 {
+            color: #fc466b;
+        }
+
+        .template-set-2 .template-emergency {
+            background: linear-gradient(135deg, #f857a6 0%, #ff5858 100%);
+        }
+
+        .template-set-3 .template-arrival {
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+        }
+
+        .template-set-3 .bus-number {
+            color: #2c3e50;
+        }
+
+        .template-set-3 .template-notice {
+            background: linear-gradient(135deg, #e67e22 0%, #e74c3c 100%);
+        }
+
+        .template-set-3 .notice-content h3 {
+            color: #e67e22;
+        }
+
+        .template-set-3 .template-event {
+            background: linear-gradient(135deg, #8e44ad 0%, #c0392b 100%);
+        }
+
+        .template-set-3 .event-content h3 {
+            color: #8e44ad;
+        }
+
+        .template-set-3 .template-emergency {
+            background: linear-gradient(135deg, #d35400 0%, #c0392b 100%);
+        }
+
+        .arrival-pictogram::before {
+            content: '🚌';
+        }
+
+        .notice-pictogram::before {
+            content: '📢';
+        }
+
+        .event-pictogram::before {
+            content: '🎉';
+        }
+
+        .emergency-pictogram::before {
+            content: '⚠️';
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚏 버스 정보 디스플레이 템플릿 - 3가지 디자인안</h1>
+
+        <div class="template-set template-set-1">
+            <div class="set-title">디자인 SET 1 - 모던 그라디언트</div>
+            <div class="grid">
+                <div class="template template-arrival">
+                    <div class="header">
+                        <div class="icon arrival-pictogram"></div>
+                        <h2>정류소 도착정보</h2>
+                    </div>
+                    <div class="bus-list">
+                        <div class="bus-item">
+                            <span class="bus-number">🚌 102번</span>
+                            <span class="bus-time">2분</span>
+                        </div>
+                        <div class="bus-item">
+                            <span class="bus-number">🚌 405번</span>
+                            <span class="bus-time">5분</span>
+                        </div>
+                        <div class="bus-item">
+                            <span class="bus-number">🚌 720번</span>
+                            <span class="bus-time">12분</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="template template-notice">
+                    <div class="header">
+                        <div class="icon notice-pictogram"></div>
+                        <h2>공지사항</h2>
+                    </div>
+                    <div class="notice-content">
+                        <h3>노선 변경 안내</h3>
+                        <p>
+                            10월 15일부터 102번 버스 노선이 일부 변경됩니다. 
+                            시청 앞 구간이 신설되며, 기존 정류장은 그대로 운영됩니다.
+                            자세한 내용은 고객센터로 문의해 주시기 바랍니다.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="template template-event">
+                    <div class="header">
+                        <div class="icon event-pictogram"></div>
+                        <h2>이벤트 안내</h2>
+                    </div>
+                    <div class="event-content">
+                        <h3>🎊 승객 감사 이벤트</h3>
+                        <div class="date">📅 2024.10.01 - 10.31</div>
+                        <p>
+                            교통카드 이용 시 포인트 2배 적립!<br>
+                            매주 추첨을 통해 50명에게<br>
+                            스타벅스 기프티콘을 드립니다.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="template template-emergency">
+                    <div class="header">
+                        <div class="icon emergency-pictogram"></div>
+                        <h2>긴급 재난정보</h2>
+                    </div>
+                    <div class="emergency-content">
+                        <h3>⚠️ 호우 경보 발효</h3>
+                        <p>
+                            현재 전 지역에 호우 경보가 발효 중입니다.<br><br>
+                            일부 노선의 운행이 지연되거나 중단될 수 있습니다.<br>
+                            외출 시 각별히 주의하시고,<br>
+                            저지대 및 하천 접근을 삼가해 주시기 바랍니다.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="template-set template-set-2">
+            <div class="set-title">디자인 SET 2 - 비비드 컬러</div>
+            <div class="grid">
+                <div class="template template-arrival">
+                    <div class="header">
+                        <div class="icon arrival-pictogram"></div>
+                        <h2>정류소 도착정보</h2>
+                    </div>
+                    <div class="bus-list">
+                        <div class="bus-item">
+                            <span class="bus-number">🚌 201번</span>
+                            <span class="bus-time">1분</span>
+                        </div>
+                        <div class="bus-item">
+                            <span class="bus-number">🚌 350번</span>
+                            <span class="bus-time">7분</span>
+                        </div>
+                        <div class="bus-item">
+                            <span class="bus-number">🚌 502번</span>
+                            <span class="bus-time">15분</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="template template-notice">
+                    <div class="header">
+                        <div class="icon notice-pictogram"></div>
+                        <h2>공지사항</h2>
+                    </div>
+                    <div class="notice-content">
+                        <h3>심야버스 증편 안내</h3>
+                        <p>
+                            시민 여러분의 요청에 따라 11월부터 심야버스가 증편 운행됩니다. 
+                            N15, N20 노선이 신설되며, 금요일과 토요일 밤 12시부터 새벽 4시까지 
+                            30분 간격으로 운행합니다.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="template template-event">
+                    <div class="header">
+                        <div class="icon event-pictogram"></div>
+                        <h2>이벤트 안내</h2>
+                    </div>
+                    <div class="event-content">
+                        <h3>🌳 친환경 캠페인</h3>
+                        <div class="date">📅 2024.11.01 - 11.30</div>
+                        <p>
+                            버스 이용하고 지구를 지켜요!<br>
+                            한 달간 20회 이상 버스 이용 시<br>
+                            친환경 텀블러를 선물로 드립니다.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="template template-emergency">
+                    <div class="header">
+                        <div class="icon emergency-pictogram"></div>
+                        <h2>긴급 재난정보</h2>
+                    </div>
+                    <div class="emergency-content">
+                        <h3>🌪️ 강풍 주의보</h3>
+                        <p>
+                            현재 전 지역 강풍 주의보가 발효되었습니다.<br><br>
+                            순간 풍속이 시속 70km를 넘을 수 있습니다.<br>
+                            대형 차량 운행에 주의가 필요하며,<br>
+                            낙하물 및 간판 등에 각별히 유의하시기 바랍니다.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="template-set template-set-3">
+            <div class="set-title">디자인 SET 3 - 클래식 프로페셔널</div>
+            <div class="grid">
+                <div class="template template-arrival">
+                    <div class="header">
+                        <div class="icon arrival-pictogram"></div>
+                        <h2>정류소 도착정보</h2>
+                    </div>
+                    <div class="bus-list">
+                        <div class="bus-item">
+                            <span class="bus-number">🚌 301번</span>
+                            <span class="bus-time">3분</span>
+                        </div>
+                        <div class="bus-item">
+                            <span class="bus-number">🚌 605번</span>
+                            <span class="bus-time">8분</span>
+                        </div>
+                        <div class="bus-item">
+                            <span class="bus-number">🚌 815번</span>
+                            <span class="bus-time">18분</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="template template-notice">
+                    <div class="header">
+                        <div class="icon notice-pictogram"></div>
+                        <h2>공지사항</h2>
+                    </div>
+                    <div class="notice-content">
+                        <h3>정기점검 안내</h3>
+                        <p>
+                            안전한 운행을 위해 12월 5일 새벽 2시부터 5시까지 
+                            시스템 정기점검이 실시됩니다. 해당 시간 동안 일부 노선의 
+                            실시간 정보 제공이 일시 중단될 수 있으니 양해 부탁드립니다.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="template template-event">
+                    <div class="header">
+                        <div class="icon event-pictogram"></div>
+                        <h2>이벤트 안내</h2>
+                    </div>
+                    <div class="event-content">
+                        <h3>🎄 연말 감사 이벤트</h3>
+                        <div class="date">📅 2024.12.01 - 12.25</div>
+                        <p>
+                            올 한 해 감사의 마음을 담아<br>
+                            특별한 선물을 준비했습니다.<br>
+                            QR코드 스캔 후 응모하시면 추첨을 통해<br>
+                            상품권과 다양한 경품을 드립니다!
+                        </p>
+                    </div>
+                </div>
+
+                <div class="template template-emergency">
+                    <div class="header">
+                        <div class="icon emergency-pictogram"></div>
+                        <h2>긴급 재난정보</h2>
+                    </div>
+                    <div class="emergency-content">
+                        <h3>❄️ 대설 특보</h3>
+                        <p>
+                            현재 전 지역에 대설 특보가 발효되었습니다.<br><br>
+                            적설량이 20cm 이상 예상됩니다.<br>
+                            일부 산간 노선의 운행이 통제될 수 있으며,<br>
+                            차량 운행 시 체인 장착이 필수입니다.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,13 +1,26 @@
+# 환경 변수 및 설정 파일
 .env
+.gstack/
+
+# 보안 및 인증서 (SSL/TLS)
 server/nginx/certs/*.key
 server/nginx/certs/*.csr
 server/nginx/certs/*.srl
 server/nginx/certs/rootCA.*
 server/nginx/certs/server.*
-upload-store/*
-!upload-store/.gitkeep
+
+# 빌드 및 의존성 라이브러리 폴더
 target/
 node_modules/
 .gradle/
+
+# IDE (개발 툴) 설정 파일
 .idea/
 .vscode/
+
+# 업로드 저장소 (비어있는 폴더 유지를 위한 .gitkeep 제외)
+upload-store/*
+!upload-store/.gitkeep
+
+# [추가] GitHub 용량 제한(100MB) 초과 방지를 위한 대용량 폴더 예외 처리
+장성군 클라우드 홈페이지 시스템/

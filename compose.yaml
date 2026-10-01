@@ -3,8 +3,6 @@ name: smartbis_jangsung
 services:
   postgres-db:
     image: docker.io/library/postgres:15-alpine
-    env_file:
-      - .env
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -19,10 +17,22 @@ services:
   egov-backend:
     build:
       context: ./server/egov-backend
-    env_file:
-      - .env
     environment:
       CONTENT_ROOT: /app/content-store
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ:-Asia/Seoul}
+      DASHBOARD_ADMIN_USERNAME: ${DASHBOARD_ADMIN_USERNAME:?Set DASHBOARD_ADMIN_USERNAME in .env}
+      DASHBOARD_ADMIN_PASSWORD: ${DASHBOARD_ADMIN_PASSWORD:?Set DASHBOARD_ADMIN_PASSWORD in .env}
+      TAGO_SERVICE_KEY: ${TAGO_SERVICE_KEY:-}
+      TAGO_CITY_CODE: ${TAGO_CITY_CODE:-}
+      TAGO_ENABLED: ${TAGO_ENABLED:-false}
+      TAGO_MOCK_MODE: ${TAGO_MOCK_MODE:-true}
+      TAGO_SERVICE_KEY_MODE: ${TAGO_SERVICE_KEY_MODE:-AUTO}
+      TAGO_POLL_INTERVAL_SECONDS: ${TAGO_POLL_INTERVAL_SECONDS:-30}
+      TAGO_RETRY_COUNT: ${TAGO_RETRY_COUNT:-3}
+      TAGO_RETRY_DELAY_SECONDS: ${TAGO_RETRY_DELAY_SECONDS:-10}
     expose:
       - "8080"
     volumes:
@@ -34,9 +44,10 @@ services:
   node-watcher:
     build:
       context: ./server/node-watcher
-    env_file:
-      - .env
     environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       TZ: Asia/Seoul
       DB_HOST: postgres-db
       DB_PORT: 5432

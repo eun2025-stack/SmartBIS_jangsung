@@ -1,0 +1,72 @@
+name: smartbis_jangsung
+
+services:
+  postgres-db:
+    image: docker.io/library/postgres:15-alpine
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    restart: unless-stopped
+
+  egov-backend:
+    build:
+      context: ./server/egov-backend
+    env_file:
+      - .env
+    environment:
+      CONTENT_ROOT: /app/content-store
+      TAGO_ENABLED: ${TAGO_ENABLED}
+      TAGO_MOCK_MODE: ${TAGO_MOCK_MODE}
+      TAGO_SERVICE_KEY: ${TAGO_SERVICE_KEY}
+      TAGO_SERVICE_KEY_MODE: ${TAGO_SERVICE_KEY_MODE}
+      TAGO_CITY_CODE: ${TAGO_CITY_CODE}
+      TAGO_POLL_INTERVAL_SECONDS: ${TAGO_POLL_INTERVAL_SECONDS}
+      TAGO_RETRY_COUNT: ${TAGO_RETRY_COUNT}
+      TAGO_RETRY_DELAY_SECONDS: ${TAGO_RETRY_DELAY_SECONDS}
+    expose:
+      - "8080"
+    volumes:
+      - ./content-store:/app/content-store:ro
+    depends_on:
+      - postgres-db
+    restart: unless-stopped
+
+  node-watcher:
+    build:
+      context: ./server/node-watcher
+    env_file:
+      - .env
+    environment:
+      TZ: Asia/Seoul
+      DB_HOST: postgres-db
+      DB_PORT: 5432
+      UPLOAD_ROOT: /app/upload-store
+      CONTENT_ROOT: /app/content-store
+    volumes:
+      - ./upload-store:/app/upload-store
+      - ./content-store:/app/content-store
+    depends_on:
+      - postgres-db
+    restart: unless-stopped
+
+  nginx:
+    image: docker.io/library/nginx:alpine
+    ports:
+      - "8443:443"
+    volumes:
+      - ./server/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./server/nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - egov-backend
+    restart: unless-stopped
+
+volumes:
+  db-data:
