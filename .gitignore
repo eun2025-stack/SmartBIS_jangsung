@@ -43,3 +43,21 @@ upload-store/*
 # 비밀 값이 든 env 백업
 .env.backup-*
 .env.bak*
+
+# 빌드·산출물
+*.apk
+*.aab
+*.war
+*.jar
+*.bak*
+target/
+volumes/
+certs/
+releases/
+reports/
+.tmp/
+.kotlin/
+.gstack/
+*.pyc
+__pycache__/
+.pytest_cache/
