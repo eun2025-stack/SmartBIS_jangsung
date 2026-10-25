@@ -50,8 +50,7 @@ CREATE TABLE IF NOT EXISTS bus_route_stops (
     node_order integer NOT NULL,
     direction varchar(50),
     created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (route_id, node_id, direction),
-    UNIQUE (route_id, direction, node_order)
+    PRIMARY KEY (route_id, direction, node_order)
 );
 
 CREATE INDEX IF NOT EXISTS idx_route_stops_node ON bus_route_stops(node_id);
@@ -74,6 +73,7 @@ CREATE TABLE IF NOT EXISTS bus_positions (
     vehicle_id bigint REFERENCES bus_vehicles(vehicle_id),
     vehicle_number varchar(100) NOT NULL,
     route_id varchar(100),
+    direction varchar(20),
     node_id varchar(100),
     node_order integer,
     latitude numeric(10,7),
@@ -227,4 +227,3 @@ SELECT
 FROM content_validation_errors;
 
 COMMIT;
-
