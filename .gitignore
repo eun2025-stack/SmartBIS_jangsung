@@ -2,6 +2,15 @@
 .env
 .gstack/
 
+# Headwind MDM 운영 비밀값과 영속 데이터
+/deployment/headwind-mdm/.env
+/deployment/headwind-mdm/volumes/
+/deployment/headwind-mdm/backups/
+/deployment/headwind-mdm/certs/*
+!/deployment/headwind-mdm/certs/README.md
+/deployment/headwind-mdm/releases/
+/client-android/releases/
+
 # 보안 및 인증서 (SSL/TLS)
 server/nginx/certs/*.key
 server/nginx/certs/*.csr
@@ -13,6 +22,7 @@ server/nginx/certs/server.*
 target/
 node_modules/
 .gradle/
+.gradle-user/
 
 # IDE (개발 툴) 설정 파일
 .idea/
@@ -22,5 +32,14 @@ node_modules/
 upload-store/*
 !upload-store/.gitkeep
 
+# 운영 미디어 저장소는 별도 백업·이관 대상이며 Git에 포함하지 않음
+/content-store/
+/server/content-store/**
+!/server/content-store/.gitkeep
+
 # [추가] GitHub 용량 제한(100MB) 초과 방지를 위한 대용량 폴더 예외 처리
 장성군 클라우드 홈페이지 시스템/
+
+# ��� ���� �� env ���
+.env.backup-*
+.env.bak*

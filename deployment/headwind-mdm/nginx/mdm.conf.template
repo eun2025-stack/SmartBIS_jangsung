@@ -1,0 +1,72 @@
+# Deployment template; Nginx does not load *.template files.
+# The IP certificate is required before changing the Compose mount target to *.conf.
+server {
+    listen 443 ssl default_server;
+    server_name _;
+
+    # SmartBIS APK uploads are larger than Nginx's 1 MiB default request limit.
+    client_max_body_size 100m;
+
+    ssl_certificate /etc/nginx/mdm-certs/fullchain.pem;
+    ssl_certificate_key /etc/nginx/mdm-certs/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:MDMSSL:10m;
+    ssl_session_timeout 10m;
+
+    # The same IP:8443 continues to serve SmartBIS APIs; Headwind owns the root paths.
+    location /api/ {
+        set $smartbis_upstream http://egov-backend:8080;
+        proxy_pass $smartbis_upstream;
+
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_read_timeout 300s;
+    }
+
+    # Auto-enrollment is allowed only for SmartBIS IDs (BIS_JS_NNN).
+    # Existing device lookups are still served by the general proxy location.
+    location ~ "^/rest/public/sync/configuration/(?!BIS_JS_[0-9]{3,}$)[^/]+$" {
+        if ($request_method = POST) { return 403; }
+        set $headwind_upstream https://headwind-mdm:8443;
+        proxy_pass $headwind_upstream;
+        proxy_ssl_server_name on;
+        proxy_ssl_name headwind-mdm;
+        proxy_ssl_verify on;
+        proxy_ssl_trusted_certificate /etc/nginx/certs/rootCA.crt;
+        proxy_ssl_verify_depth 2;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+    }
+
+    location / {
+        set $headwind_upstream https://headwind-mdm:8443;
+        proxy_pass $headwind_upstream;
+
+        proxy_ssl_server_name on;
+        proxy_ssl_name headwind-mdm;
+        proxy_ssl_verify on;
+        proxy_ssl_trusted_certificate /etc/nginx/certs/rootCA.crt;
+        proxy_ssl_verify_depth 2;
+
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+}

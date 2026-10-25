@@ -1,0 +1,69 @@
+name: smartbis-headwind-mdm
+
+services:
+  postgresql:
+    image: docker.io/library/postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${SQL_USER:?Set SQL_USER in .env}
+      POSTGRES_PASSWORD: ${SQL_PASS:?Set SQL_PASS in .env}
+      POSTGRES_DB: ${SQL_BASE:-hmdm}
+    volumes:
+      - hmdm-db-data:/var/lib/postgresql/data
+    networks:
+      - mdm-data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${SQL_USER} -d ${SQL_BASE:-hmdm}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  hmdm:
+    image: docker.io/headwindmdm/hmdm:0.1.9
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      SQL_HOST: postgresql
+      SQL_USER: ${SQL_USER:?Set SQL_USER in .env}
+      SQL_BASE: ${SQL_BASE:-hmdm}
+      SQL_PASS: ${SQL_PASS:?Set SQL_PASS in .env}
+      BASE_DOMAIN: "${MDM_HOST:?Set MDM_HOST in .env}:8443"
+      LOCAL_IP: ${SERVER_LAN_IP:-}
+      PROTOCOL: https
+      HTTPS_LETSENCRYPT: "false"
+      HTTPS_CERT_PATH: /certs
+      HTTPS_CERT: cert.pem
+      HTTPS_FULLCHAIN: fullchain.pem
+      HTTPS_PRIVKEY: privkey.pem
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?Set ADMIN_EMAIL in .env}
+      SHARED_SECRET: ${SHARED_SECRET:?Set SHARED_SECRET in .env}
+      HMDM_VARIANT: os
+      DOWNLOAD_CREDENTIALS: ""
+      HMDM_URL: ${HMDM_URL:-https://h-mdm.com/files/hmdm-5.40.1-os.war}
+      CLIENT_VERSION: ${CLIENT_VERSION:-6.37}
+      FORCE_RECONFIGURE: ""
+    ports:
+      # The existing Nginx owns host TCP/8443; only MQTT gets a new host port.
+      - "31000:31000"
+    volumes:
+      - ./volumes/work:/usr/local/tomcat/work:rw
+      - ./certs:/certs:ro
+      - ./volumes/hmdm-config:/usr/local/tomcat/conf/Catalina/localhost:rw
+      - ./volumes/webapps:/usr/local/tomcat/webapps:rw
+    networks:
+      mdm-data: {}
+      smartbis:
+        aliases:
+          - headwind-mdm
+    restart: unless-stopped
+
+networks:
+  mdm-data:
+    internal: true
+  smartbis:
+    external: true
+    name: ${SMARTBIS_NETWORK:-smartbis_jangsung_default}
+
+volumes:
+  hmdm-db-data:

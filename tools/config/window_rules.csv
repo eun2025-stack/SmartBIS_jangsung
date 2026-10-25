@@ -1,0 +1,28 @@
+﻿key,value,unit,description
+pre_departure_minutes,15,minutes,출발 전 조회 시작
+post_trip_minutes,10,minutes,예상 운행 종료 뒤 여유
+default_trip_minutes,60,minutes,소요시간 또는 거리 환산 기준이 없을 때
+distance_speed_kmh,,km/h,거리 환산 속도는 미지정; 임의 속도 추정 금지
+local_intervals_seconds,300|600,seconds,두 간격 모두 계산
+hundred_interval_seconds,600,seconds,100번 상시 간격
+hundred_start,05:30,HH:MM,100번 상시 시작 포함
+hundred_end,21:00,HH:MM,100번 상시 종료 제외
+expected_hundred_routes,17,routes,대응표 집계 검증
+expected_local_routes,88,routes,대응표 전체에서 100번을 뺀 집합
+expected_departures,333,trips,기점과 종점의 실제 출발 시각 합계
+backup_route_count,105,routes,전체 노선 백업 스윕
+backup_intervals_seconds,1200|1800,seconds,20분과 30분 시나리오
+backup_start,00:00,HH:MM,백업 스윕 계산 시작
+backup_end,24:00,HH:MM,백업 스윕 계산 종료 제외
+daily_budget,9500,calls,운영 예산
+retry_reserve,500,calls,운영 예산 9500 안에서 별도로 남겨둘 여유
+first_data_row,4,row,관내 시트의 첫 노선 행
+route_column,1,column,노선번호 A열; keycode 열 아님
+origin_name_column,2,column,기점 B열
+destination_name_column,4,column,종점 D열
+distance_column,5,column,편도 거리 E열
+declared_count_column,6,column,편도 운행 횟수 F열; 합계 확인용
+origin_departure_column,8,column,기점 시각 H열
+destination_departure_column,9,column,종점 시각 I열
+keycode_column,0,column,0은 keycode 열 없음
+trip_minutes_column,0,column,0은 명시적 소요시간 열 없음; 1일 운행거리를 소요시간으로 해석하지 않음
