@@ -30,6 +30,7 @@
   const message = document.getElementById('message');
   const params = new URLSearchParams(location.search);
   if (params.has('error')) message.textContent = '계정 또는 비밀번호를 확인해 주세요.';
+  if (params.has('expired')) message.textContent = '로그인 세션이 만료되었습니다. 다시 로그인해 주세요.';
   if (params.has('logout')) { message.textContent = '안전하게 로그아웃했습니다.'; message.className = 'message ok'; }
   fetch('../csrf', { headers: { Accept: 'application/json' }, cache: 'no-store' })
     .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })

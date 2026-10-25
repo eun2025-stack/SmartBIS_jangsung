@@ -7,6 +7,8 @@ import java.util.List;
 public record ManagedContent(
         String contentId,
         String contentType,
+        String category,
+        String presentationType,
         String title,
         String targetFileName,
         LocalDate displayStartDate,
@@ -15,6 +17,7 @@ public record ManagedContent(
         String template,
         String publicationStatus,
         String updatedBy,
-        OffsetDateTime updatedAt
+        OffsetDateTime updatedAt,
+        List<com.smartbis.backend.content.ContentAssetSummary> assets
 ) {
 }

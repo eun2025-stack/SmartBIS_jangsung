@@ -47,6 +47,8 @@ public class ManagedContentService {
         return jdbcTemplate.query("""
                 SELECT c.content_id,
                        c.content_type,
+                       c.category,
+                       c.presentation_type,
                        c.title,
                        c.target_file_name,
                        c.display_start_date,
@@ -148,9 +150,28 @@ public class ManagedContentService {
         java.sql.Date start = rs.getDate("display_start_date");
         java.sql.Date end = rs.getDate("display_end_date");
         java.sql.Timestamp updatedAt = rs.getTimestamp("updated_at");
+        String contentId = rs.getString("content_id");
+        List<com.smartbis.backend.content.ContentAssetSummary> assets = jdbcTemplate.query("""
+                SELECT asset_role, file_name, sequence_no, mime_type,
+                       file_size_bytes, sha256
+                  FROM content_assets
+                 WHERE content_id = ?
+                 ORDER BY sequence_no
+                """, (assetRs, assetRow) -> new com.smartbis.backend.content.ContentAssetSummary(
+                assetRs.getString("asset_role"),
+                assetRs.getString("file_name"),
+                assetRs.getInt("sequence_no"),
+                assetRs.getString("mime_type"),
+                (Long) assetRs.getObject("file_size_bytes"),
+                assetRs.getString("sha256"),
+                "/api/v1/media/" + contentId + "/assets/" + assetRs.getInt("sequence_no")
+        ), contentId);
+
         return new ManagedContent(
-                rs.getString("content_id"),
+                contentId,
                 rs.getString("content_type"),
+                rs.getString("category"),
+                rs.getString("presentation_type"),
                 rs.getString("title"),
                 rs.getString("target_file_name"),
                 start == null ? null : start.toLocalDate(),
@@ -160,7 +181,8 @@ public class ManagedContentService {
                 rs.getString("publication_status"),
                 rs.getString("updated_by"),
                 updatedAt == null ? null : updatedAt.toInstant()
-                        .atOffset(java.time.ZoneOffset.UTC)
+                        .atOffset(java.time.ZoneOffset.UTC),
+                assets
         );
     }
 

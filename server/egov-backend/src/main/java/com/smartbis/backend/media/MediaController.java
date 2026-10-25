@@ -32,6 +32,25 @@ public class MediaController {
                 .body(media.resource());
     }
 
+    @GetMapping("/{contentId}/assets")
+    public java.util.List<com.smartbis.backend.content.ContentAssetSummary> listAssets(
+            @PathVariable String contentId) {
+        return mediaService.listAssets(contentId);
+    }
+
+    @GetMapping("/{contentId}/assets/{sequence}")
+    public ResponseEntity<Resource> downloadAsset(
+            @PathVariable String contentId,
+            @PathVariable int sequence) throws IOException {
+        MediaService.MediaFile media = mediaService.loadAsset(contentId, sequence);
+        MediaType mediaType = MediaTypeFactoryCompat.detect(media.path().toString());
+        return ResponseEntity.ok()
+                .contentType(mediaType)
+                .contentLength(media.resource().contentLength())
+                .header("Content-Disposition", "inline; filename=\"" + media.path().getFileName() + "\"")
+                .body(media.resource());
+    }
+
     private static final class MediaTypeFactoryCompat {
         private static MediaType detect(String filename) {
             String detected = org.springframework.http.MediaTypeFactory.getMediaType(filename)

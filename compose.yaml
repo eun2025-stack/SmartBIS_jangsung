@@ -23,6 +23,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       TZ: ${TZ:-Asia/Seoul}
+      NODE_WATCHER_STATUS_URL: http://node-watcher:3000/health
       DASHBOARD_ADMIN_USERNAME: ${DASHBOARD_ADMIN_USERNAME:?Set DASHBOARD_ADMIN_USERNAME in .env}
       DASHBOARD_ADMIN_PASSWORD: ${DASHBOARD_ADMIN_PASSWORD:?Set DASHBOARD_ADMIN_PASSWORD in .env}
       TAGO_SERVICE_KEY: ${TAGO_SERVICE_KEY:-}
@@ -33,10 +34,18 @@ services:
       TAGO_POLL_INTERVAL_SECONDS: ${TAGO_POLL_INTERVAL_SECONDS:-30}
       TAGO_RETRY_COUNT: ${TAGO_RETRY_COUNT:-3}
       TAGO_RETRY_DELAY_SECONDS: ${TAGO_RETRY_DELAY_SECONDS:-10}
+      TAGO_CATALOG_SYNC_CRON: "${TAGO_CATALOG_SYNC_CRON:-0 0 3 * * *}"
+      TAGO_VEHICLE_LOCATION_ENABLED: ${TAGO_VEHICLE_LOCATION_ENABLED:-false}
+      TAGO_VEHICLE_LOCATION_POLL_INTERVAL_MS: ${TAGO_VEHICLE_LOCATION_POLL_INTERVAL_MS:-10000}
+      TAGO_LOCATION_OBSERVATION_MODE: ${TAGO_LOCATION_OBSERVATION_MODE:-false}
+      TAGO_ARRIVAL_ENABLED: ${TAGO_ARRIVAL_ENABLED:-true}
+      MOCT_WFS_SERVICE_KEY: ${MOCT_WFS_SERVICE_KEY:-}
+      MOCT_WFS_DOMAIN: ${MOCT_WFS_DOMAIN:-https://localhost:8443}
     expose:
       - "8080"
     volumes:
-      - ./content-store:/app/content-store:ro
+      - ./server/content-store:/app/content-store:ro
+      - ./deployment/headwind-mdm/volumes/hmdm-config/ROOT.xml:/run/hmdm/ROOT.xml:ro
     depends_on:
       - postgres-db
     restart: unless-stopped
@@ -53,9 +62,11 @@ services:
       DB_PORT: 5432
       UPLOAD_ROOT: /app/upload-store
       CONTENT_ROOT: /app/content-store
+    expose:
+      - "3000"
     volumes:
       - ./upload-store:/app/upload-store
-      - ./content-store:/app/content-store
+      - ./server/content-store:/app/content-store
     depends_on:
       - postgres-db
     restart: unless-stopped
@@ -67,6 +78,8 @@ services:
     volumes:
       - ./server/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./server/nginx/certs:/etc/nginx/certs:ro
+      - ./deployment/headwind-mdm/nginx/mdm.conf.template:/etc/nginx/conf.d/headwind-mdm.conf:ro
+      - ./deployment/headwind-mdm/certs:/etc/nginx/mdm-certs:ro
     depends_on:
       - egov-backend
     restart: unless-stopped

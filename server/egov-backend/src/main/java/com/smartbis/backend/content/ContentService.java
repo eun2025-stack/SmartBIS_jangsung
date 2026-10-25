@@ -24,12 +24,15 @@ public class ContentService {
         String sql = """
                 SELECT content_id,
                        content_type,
+                       category,
+                       presentation_type,
                        title,
                        target_file_name,
                        display_start_date,
                        display_end_date,
                        target_regions::text AS target_regions,
-                       template
+                       template,
+                       source_path
                  FROM contents
                  WHERE (display_start_date IS NULL OR display_start_date <= CURRENT_DATE)
                    AND (display_end_date IS NULL OR display_end_date >= CURRENT_DATE)
@@ -75,16 +78,38 @@ public class ContentService {
             }
         }
 
+        List<ContentAssetSummary> assets = jdbcTemplate.query("""
+                SELECT asset_role, file_name, sequence_no, mime_type,
+                       file_size_bytes, sha256
+                  FROM content_assets
+                 WHERE content_id = ?
+                 ORDER BY sequence_no
+                """, (assetRs, assetRow) -> new ContentAssetSummary(
+                assetRs.getString("asset_role"),
+                assetRs.getString("file_name"),
+                assetRs.getInt("sequence_no"),
+                assetRs.getString("mime_type"),
+                (Long) assetRs.getObject("file_size_bytes"),
+                assetRs.getString("sha256"),
+                "/api/v1/media/" + contentId + "/assets/" + assetRs.getInt("sequence_no")
+        ), contentId);
+
+        String legacyMediaUrl = assets.isEmpty()
+                ? null : "/api/v1/media/" + contentId;
+
         return new ContentSummary(
                 contentId,
                 rs.getString("content_type"),
+                rs.getString("category"),
+                rs.getString("presentation_type"),
                 rs.getString("title"),
                 rs.getString("target_file_name"),
                 getDate(rs, "display_start_date"),
                 getDate(rs, "display_end_date"),
                 targetRegions,
                 rs.getString("template"),
-                "/api/v1/media/" + contentId
+                legacyMediaUrl,
+                assets
         );
     }
 
