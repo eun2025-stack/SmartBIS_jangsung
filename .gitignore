@@ -61,3 +61,10 @@ reports/
 *.pyc
 __pycache__/
 .pytest_cache/
+
+# 산출물·런타임 데이터 (커밋 제외)
+server/content-store/
+tago-*.json
+*.zip
+*.mp4
+*.xlsx
