@@ -1,53 +1,624 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/displayRoot"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="#F7F1E1">
+
+    <com.smartbis.client.view.JangseongBackdropView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Full-screen content surfaces. Exactly one is visible at a time. -->
+    <LinearLayout
+        android:id="@+id/arrivalGroup"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingStart="48dp"
+        android:paddingEnd="48dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="0.82"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🚌"
+                    android:textSize="116sp" />
+
+                <TextView
+                    android:id="@+id/arrivalDistance"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    android:background="@drawable/pill_forest"
+                    android:paddingStart="30dp"
+                    android:paddingTop="16dp"
+                    android:paddingEnd="30dp"
+                    android:paddingBottom="16dp"
+                    android:text="버스 도착 안내"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="30sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1.7"
+                android:background="@drawable/card_cream"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="36dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="이번 정류장"
+                    android:textColor="#2F5233"
+                    android:textSize="36sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/arrivalCurrent"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:maxLines="2"
+                    android:text="장성터미널"
+                    android:textColor="#1F2E22"
+                    android:textSize="78sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="-8dp"
+                    android:text="↓"
+                    android:textColor="#B5563C"
+                    android:textSize="48sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="다음 정류장"
+                    android:textColor="#2F5233"
+                    android:textSize="36sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/arrivalNext"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:maxLines="2"
+                    android:text="장성읍사무소"
+                    android:textColor="#B5563C"
+                    android:textSize="64sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="112dp"
+            android:layout_marginTop="18dp"
+            android:background="@drawable/card_cream"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="48dp"
+            android:paddingEnd="48dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="노선 안내"
+                android:textColor="#2F5233"
+                android:textSize="28sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/arrivalRouteText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="이번 정류장    →    다음 정류장"
+                android:textColor="#1F2E22"
+                android:textSize="34sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
 
     <LinearLayout
+        android:id="@+id/posterTextGroup"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="match_parent"
+        android:orientation="horizontal"
+        android:paddingStart="36dp"
+        android:paddingEnd="36dp"
+        android:visibility="gone">
+
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="0.78"
+            android:background="@drawable/card_cream"
+            android:padding="14dp">
+
+            <ImageView
+                android:id="@+id/posterImage"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="행사 포스터"
+                android:scaleType="centerCrop" />
+
+            <TextView
+                android:id="@+id/posterPlaceholder"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="포스터 이미지"
+                android:textColor="#4C7A4E"
+                android:textSize="38sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1.22"
+            android:gravity="center_vertical"
+            android:orientation="vertical"
+            android:paddingStart="58dp"
+            android:paddingEnd="34dp">
+
+            <TextView
+                android:id="@+id/posterCategory"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingStart="26dp"
+                android:paddingTop="12dp"
+                android:paddingEnd="26dp"
+                android:paddingBottom="12dp"
+                android:text="장성 소식 · 행사"
+                android:textColor="#FFFFFFFF"
+                android:textSize="28sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/posterTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="28dp"
+                android:maxLines="3"
+                android:text="행사 제목"
+                android:textColor="#1F2E22"
+                android:textSize="66sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/posterBody"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="26dp"
+                android:autoSizeMaxTextSize="42sp"
+                android:autoSizeMinTextSize="26sp"
+                android:autoSizeTextType="uniform"
+                android:ellipsize="end"
+                android:lineSpacingMultiplier="1.2"
+                android:maxLines="9"
+                android:text="행사 안내 내용"
+                android:textColor="#34483A"
+                android:textSize="38sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/textGroup"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
         android:orientation="vertical"
-        android:padding="24dp">
+        android:paddingStart="110dp"
+        android:paddingEnd="110dp"
+        android:visibility="gone">
 
         <TextView
-            android:id="@+id/statusText"
-            android:layout_width="match_parent"
+            android:id="@+id/textAccent"
+            android:layout_width="72dp"
+            android:layout_height="8dp"
+            android:background="#2F5233" />
+
+        <TextView
+            android:id="@+id/textCategory"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="24dp"
-            android:text="표출정보 조회 준비"
-            android:textSize="28sp"
+            android:layout_marginTop="28dp"
+            android:paddingStart="30dp"
+            android:paddingTop="14dp"
+            android:paddingEnd="30dp"
+            android:paddingBottom="14dp"
+            android:text="장성 소식 · 공지"
+            android:textColor="#FFFFFFFF"
+            android:textSize="30sp"
             android:textStyle="bold" />
 
-        <Button
-            android:id="@+id/downloadImageButton"
+        <TextView
+            android:id="@+id/textTitle"
             android:layout_width="match_parent"
-            android:layout_height="88dp"
-            android:layout_marginBottom="16dp"
-            android:text="표출정보 조회"
-            android:textSize="24sp" />
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:gravity="center"
+            android:maxLines="3"
+            android:text="버스 운행 안내"
+            android:textColor="#1F2E22"
+            android:textSize="82sp"
+            android:textStyle="bold" />
 
-        <Button
-            android:id="@+id/downloadVideoButton"
+        <TextView
+            android:id="@+id/textBody"
             android:layout_width="match_parent"
-            android:layout_height="88dp"
-            android:text="다시 조회"
-            android:textSize="24sp" />
+            android:layout_height="wrap_content"
+            android:layout_marginTop="38dp"
+            android:autoSizeMaxTextSize="48sp"
+            android:autoSizeMinTextSize="28sp"
+            android:autoSizeTextType="uniform"
+            android:ellipsize="end"
+            android:gravity="center"
+            android:lineSpacingMultiplier="1.25"
+            android:maxLines="9"
+            android:text="공지 내용"
+            android:textColor="#34483A"
+            android:textSize="42sp" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/cardNewsGroup"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:paddingStart="26dp"
+        android:paddingEnd="26dp"
+        android:visibility="gone">
 
         <ImageView
-            android:id="@+id/imageView"
+            android:id="@+id/cardNewsImage"
             android:layout_width="match_parent"
-            android:layout_height="300dp"
-            android:layout_marginTop="24dp"
-            android:contentDescription="표출 이미지"
+            android:layout_height="match_parent"
+            android:contentDescription="카드뉴스 이미지"
+            android:scaleType="fitCenter" />
+
+        <ImageView
+            android:id="@+id/cardNewsImageIncoming"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="다음 카드뉴스 이미지"
             android:scaleType="fitCenter"
             android:visibility="gone" />
 
-        <VideoView
-            android:id="@+id/videoView"
+        <TextView
+            android:id="@+id/cardNewsCaption"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|start"
+            android:layout_margin="24dp"
+            android:background="@drawable/caption_scrim"
+            android:paddingStart="20dp"
+            android:paddingTop="10dp"
+            android:paddingEnd="20dp"
+            android:paddingBottom="10dp"
+            android:textColor="#FFFFFFFF"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+    </FrameLayout>
+
+    <FrameLayout
+        android:id="@+id/fullImageGroup"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/fullImage"
             android:layout_width="match_parent"
-            android:layout_height="300dp"
-            android:layout_marginTop="24dp"
-            android:visibility="gone" />
+            android:layout_height="match_parent"
+            android:contentDescription="전체 화면 이미지"
+            android:scaleType="centerCrop" />
+
+    </FrameLayout>
+
+    <LinearLayout
+        android:id="@+id/disasterGroup"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#7A1F1F"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:padding="64dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="210dp"
+            android:layout_height="210dp"
+            android:layout_marginEnd="54dp"
+            android:background="@drawable/disaster_icon"
+            android:gravity="center"
+            android:text="!"
+            android:textColor="#7A1F1F"
+            android:textSize="136sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/disasterTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:maxLines="2"
+                android:text="재난 안전 안내"
+                android:textColor="#FFFFFFFF"
+                android:textSize="74sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/disasterBody"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="28dp"
+                android:autoSizeMaxTextSize="48sp"
+                android:autoSizeMinTextSize="27sp"
+                android:autoSizeTextType="uniform"
+                android:ellipsize="end"
+                android:lineSpacingMultiplier="1.25"
+                android:maxLines="8"
+                android:text="재난 안내 내용"
+                android:textColor="#FFFFEAE3"
+                android:textSize="40sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/videoGroup"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#000000"
+        android:visibility="gone">
+
+        <com.smartbis.client.view.CenteredVideoView
+            android:id="@+id/videoPlayer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center" />
+
+    </FrameLayout>
+
+    <!-- Shared, semi-transparent content identity overlay. Kept above every content surface. -->
+    <LinearLayout
+        android:id="@+id/contentOverlay"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="42dp"
+        android:layout_marginBottom="34dp"
+        android:elevation="12dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/overlayTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:shadowColor="#99000000"
+            android:shadowDx="1"
+            android:shadowDy="2"
+            android:shadowRadius="5"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#BFFFFFFF"
+            android:textSize="64sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/waitingGroup"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="장성군 시내버스"
+            android:textColor="#2F5233"
+            android:textSize="48sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/waitingText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:gravity="center"
+            android:text="운행 정보를 기다리고 있습니다"
+            android:textColor="#34483A"
+            android:textSize="34sp" />
+    </LinearLayout>
+
+    <!-- Transparent shared overlay is drawn last, above full-screen content. -->
+    <LinearLayout
+        android:id="@+id/brandMark"
+        android:layout_width="match_parent"
+        android:layout_height="104dp"
+        android:background="@android:color/transparent"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="24dp"
+        android:paddingEnd="28dp">
+
+        <LinearLayout
+            android:layout_width="330dp"
+            android:layout_height="match_parent"
+            android:gravity="center_vertical|start"
+            android:orientation="horizontal">
+
+            <com.smartbis.client.view.SvgAssetView
+                android:id="@+id/brandCharacter"
+                android:layout_width="84dp"
+                android:layout_height="96dp" />
+
+            <com.smartbis.client.view.SvgAssetView
+                android:id="@+id/brandBi"
+                android:layout_width="184dp"
+                android:layout_height="72dp"
+                android:layout_marginStart="10dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="14dp"
+            android:layout_marginEnd="14dp"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:id="@+id/arrivalOverlayFrame"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/arrival_overlay_scrim"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:paddingStart="24dp"
+                android:paddingTop="10dp"
+                android:paddingEnd="24dp"
+                android:paddingBottom="10dp">
+
+                <TextView
+                    android:id="@+id/headerCurrentStop"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:text="다음 정류장"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="32sp"
+                    android:textStyle="bold" />
+
+                <ImageView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="18dp"
+                    android:layout_marginEnd="18dp"
+                    android:layout_gravity="center_vertical"
+                    android:src="@drawable/arrival_arrow"
+                    android:contentDescription="다음 정류장으로 이동" />
+
+                <TextView
+                    android:id="@+id/headerNextStop"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1.35"
+                    android:ellipsize="end"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:text="현재 운행 정보 없음"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="38sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="222dp"
+            android:layout_height="match_parent"
+            android:gravity="center_vertical|end"
+            android:orientation="vertical">
+
+            <com.smartbis.client.view.SvgAssetView
+                android:id="@+id/brandCi"
+                android:layout_width="198dp"
+                android:layout_height="72dp"
+                android:layout_gravity="end" />
+
+            <TextView
+                android:id="@+id/connectionStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end"
+                android:visibility="gone"
+                android:background="@drawable/pill_forest"
+                android:paddingStart="12dp"
+                android:paddingTop="4dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="4dp"
+                android:text="연결 대기"
+                android:textColor="#FFFFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
     </LinearLayout>
-</ScrollView>
+
+    <TextView
+        android:id="@+id/clockText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start"
+        android:layout_marginStart="42dp"
+        android:layout_marginBottom="34dp"
+        android:gravity="start|center_vertical"
+        android:shadowColor="#99000000"
+        android:shadowDx="1"
+        android:shadowDy="2"
+        android:shadowRadius="5"
+        android:textColor="#BFFFFFFF"
+        android:textSize="54sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/connectionError"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginStart="360dp"
+        android:layout_marginTop="112dp"
+        android:layout_marginEnd="360dp"
+        android:background="#CC7A1F1F"
+        android:gravity="center"
+        android:maxLines="2"
+        android:paddingStart="18dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="18dp"
+        android:paddingBottom="8dp"
+        android:textColor="#FFFFFFFF"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+</FrameLayout>

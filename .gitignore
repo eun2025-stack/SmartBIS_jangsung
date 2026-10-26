@@ -68,3 +68,5 @@ tago-*.json
 *.zip
 *.mp4
 *.xlsx
+client-android/**/build/
+client-android/.kotlin/

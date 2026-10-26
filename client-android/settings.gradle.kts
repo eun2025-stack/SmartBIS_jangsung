@@ -23,5 +23,5 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "SmartBIS Client"
-include(":app")
- 
+include(":app", ":vehicle-number")
+
