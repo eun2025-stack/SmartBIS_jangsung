@@ -25,6 +25,6 @@ public class LocationCollectionConfiguration {
     @ConditionalOnProperty(prefix = "tago.location.operations", name = "enabled", havingValue = "true")
     RouteCallPlanScheduler routeCallPlanScheduler(LocationCollectionProperties settings, JdbcTemplate jdbc) {
         ZoneId zone = ZoneId.of(settings.getZone());
-        return new RouteCallPlanScheduler(new JdbcRouteCallPlanStore(jdbc), Clock.system(zone), zone);
+        return new RouteCallPlanScheduler(new JdbcRouteCallPlanStore(jdbc), Clock.system(zone), zone, settings);
     }
 }

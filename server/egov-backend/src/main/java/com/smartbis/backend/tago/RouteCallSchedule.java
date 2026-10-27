@@ -21,6 +21,37 @@ final class RouteCallSchedule {
     }
     record Day(List<Slot> slots, Summary summary) {}
 
+    static Day compileLanes(List<Plan> plans, LocalDate day, ZoneId zone, LocationCollectionProperties settings) {
+        var transformed = new ArrayList<Plan>();
+        Window laneA = new Window(seconds(settings.getLaneAStart()), seconds(settings.getLaneAEnd()), settings.getLaneAIntervalSeconds());
+        Window laneC = new Window(seconds(settings.getLaneCStart()), seconds(settings.getLaneCEnd()), settings.getLaneCIntervalSeconds());
+        for (Plan plan : plans) {
+            if (!plan.enabled()) continue;
+            boolean hundred = "100번".equals(plan.group());
+            boolean laneAEnabled = hundred && settings.getHundred().isEnabled()
+                    && settings.getHundred().getRouteIds().contains(plan.routeId());
+            boolean variantEnabled = hundred && settings.getVariantRouteIds().contains(plan.routeId());
+            boolean localEnabled = "관내".equals(plan.group()) && settings.getLocal().isEnabled()
+                    && settings.getLocal().getRouteIds().contains(plan.routeId());
+            List<Window> windows = localEnabled || variantEnabled ? mergeWindows(plan.windows()) : List.of();
+            transformed.add(new Plan(plan.routeId(), variantEnabled ? "관내" : plan.group(), true, windows,
+                    laneAEnabled ? laneA : null, laneC, plan.lastAttempt()));
+        }
+        return compile(transformed, day, zone, true);
+    }
+
+    private static List<Window> mergeWindows(List<Window> windows) {
+        var result = new ArrayList<Window>();
+        for (var window : windows.stream().sorted(Comparator.comparingInt(Window::start)).toList()) {
+            if (result.isEmpty() || window.start() > result.get(result.size() - 1).end()) result.add(window);
+            else {
+                var old = result.remove(result.size() - 1);
+                result.add(new Window(old.start(), Math.max(old.end(), window.end()), Math.min(old.interval(), window.interval())));
+            }
+        }
+        return List.copyOf(result);
+    }
+
     static Day compile(List<Plan> plans, LocalDate day, ZoneId zone, boolean previewDisabled) {
         var slots = new TreeMap<String,Slot>();
         var counts = new int[Role.values().length];
@@ -31,8 +62,8 @@ final class RouteCallSchedule {
             if (!plan.enabled() && !previewDisabled) continue;
             if (!Set.of("관내", "100번").contains(plan.group())) throw new IllegalArgumentException("LOCATION_PLAN_INVALID_GROUP");
             if (plan.group().equals("100번")) {
-                if (!plan.windows().isEmpty() || plan.service() == null) throw new IllegalArgumentException("LOCATION_PLAN_INVALID_HUNDRED");
-                add(slots, counts, plan.routeId(), plan.service(), Role.HUNDRED, midnight);
+                if (!plan.windows().isEmpty()) throw new IllegalArgumentException("LOCATION_PLAN_INVALID_HUNDRED");
+                if (plan.service() != null) add(slots, counts, plan.routeId(), plan.service(), Role.HUNDRED, midnight);
             } else {
                 var sorted = plan.windows().stream().sorted(Comparator.comparingInt(Window::start)).toList();
                 int previousEnd = -1;

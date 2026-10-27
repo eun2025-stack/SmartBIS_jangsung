@@ -273,6 +273,7 @@ public class TagoVehicleLocationService {
             lastFailureReason = reason;
             long backoff = "TAGO_HTTP_429".equals(reason)
                     ? RATE_LIMIT_COOLDOWN_MILLIS : Duration.ofMinutes(2).toMillis();
+            if ("TAGO_HTTP_429".equals(reason) && operationalScheduler != null) operationalScheduler.laneCRateLimited();
             nextAllowedPollAtMillis = System.currentTimeMillis() + backoff;
             return -2;
         }
@@ -354,7 +355,7 @@ public class TagoVehicleLocationService {
         int nodeOrder = integer(text(item, "nodeord"), -1);
         double latitude = decimal(text(item, "gpslati"), Double.NaN);
         double longitude = decimal(text(item, "gpslong"), Double.NaN);
-        if (vehicleNumber.isBlank() || nodeId.isBlank() || nodeOrder < 1
+        if (vehicleNumber.isBlank() || nodeId.isBlank() || nodeOrder < 0
                 || !Double.isFinite(latitude) || !Double.isFinite(longitude)
                 || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
         List<String> directions = jdbc.query("""
