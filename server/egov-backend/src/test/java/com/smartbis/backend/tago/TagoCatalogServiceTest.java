@@ -163,18 +163,30 @@ class TagoCatalogServiceTest {
     }
 
     @Test
-    void fallsBackToResponseSequenceWhenStopOrderIsMissingOrInvalid() throws Exception {
+    void keepsZeroNodeOrderAsValidFirstStop() throws Exception {
         Document doc = TagoCatalogService.parseXml("""
                 <response><item><nodeid>STOP2</nodeid><nodenm>장성역</nodenm><nodeord>0</nodeord></item></response>
                 """);
         var stop = TagoCatalogService.stopFrom(
                 (org.w3c.dom.Element) doc.getElementsByTagName("item").item(0), "ROUTE1", 12);
 
-        assertEquals(12, stop.order());
-        assertTrue(stop.orderInferred());
+        assertEquals(0, stop.order());
+        assertFalse(stop.orderInferred());
 
         var normalized = TagoCatalogService.normalizeStopOrders(java.util.List.of(stop));
-        assertEquals(1, normalized.get(0).order());
+        assertEquals(0, normalized.get(0).order());
+    }
+
+    @Test
+    void fallsBackToZeroBasedResponseSequenceWhenStopOrderIsMissing() throws Exception {
+        Document doc = TagoCatalogService.parseXml("""
+                <response><item><nodeid>STOP3</nodeid><nodenm>장성역2</nodenm></item></response>
+                """);
+        var stop = TagoCatalogService.stopFrom(
+                (org.w3c.dom.Element) doc.getElementsByTagName("item").item(0), "ROUTE1", 12);
+
+        assertEquals(11, stop.order());
+        assertTrue(stop.orderInferred());
     }
 
     @Test

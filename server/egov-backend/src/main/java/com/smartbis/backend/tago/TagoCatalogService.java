@@ -753,11 +753,11 @@ public class TagoCatalogService {
         try {
             parsedOrder = Integer.parseInt(rawOrder);
         } catch (NumberFormatException e) {
-            parsedOrder = 0;
+            parsedOrder = -1;
         }
-        boolean orderInferred = parsedOrder < 1;
-        int order = orderInferred ? responseSequence : parsedOrder;
-        if (order < 1) throw new CatalogValidationException("STOP_ORDER_INVALID");
+        boolean orderInferred = parsedOrder < 0;
+        int order = orderInferred ? responseSequence - 1 : parsedOrder;
+        if (order < 0) throw new CatalogValidationException("STOP_ORDER_INVALID");
         String directionCode = childText(item, "updowncd");
         String direction = "0".equals(directionCode) ? "UP" : "1".equals(directionCode) ? "DOWN" : "UNKNOWN";
         return new RouteStop(routeId, id, name, order, direction, directionCode,
@@ -779,7 +779,7 @@ public class TagoCatalogService {
             boolean[] fixed = new boolean[indexes.size()];
             for (int position = 0; position < indexes.size(); position++) {
                 RouteStop stop = input.get(indexes.get(position));
-                fixed[position] = !stop.orderInferred() && stop.order() > 0 && usedOrders.add(stop.order());
+                fixed[position] = !stop.orderInferred() && stop.order() >= 0 && usedOrders.add(stop.order());
             }
 
             for (int position = 0; position < indexes.size(); position++) {
@@ -790,7 +790,7 @@ public class TagoCatalogService {
                     continue;
                 }
 
-                int lowerBound = 1;
+                int lowerBound = 0;
                 for (int previous = position - 1; previous >= 0; previous--) {
                     if (fixed[previous]) {
                         lowerBound = input.get(indexes.get(previous)).order() + 1;
@@ -806,10 +806,10 @@ public class TagoCatalogService {
                 }
 
                 int fallbackOrder = firstAvailableOrder(lowerBound, upperBound, usedOrders);
-                if (fallbackOrder < 1) {
-                    fallbackOrder = firstAvailableOrder(1, Integer.MAX_VALUE, usedOrders);
+                if (fallbackOrder < 0) {
+                    fallbackOrder = firstAvailableOrder(0, Integer.MAX_VALUE, usedOrders);
                 }
-                if (fallbackOrder < 1) throw new CatalogValidationException("STOP_ORDER_EXHAUSTED");
+                if (fallbackOrder < 0) throw new CatalogValidationException("STOP_ORDER_EXHAUSTED");
                 usedOrders.add(fallbackOrder);
                 normalized[sourceIndex] = new RouteStop(stop.routeId(), stop.id(), stop.name(), fallbackOrder,
                         stop.direction(), stop.directionCode(), stop.latitude(), stop.longitude(), stop.responseSequence(), true);
@@ -955,7 +955,7 @@ public class TagoCatalogService {
 
     private static int firstAvailableOrder(int lowerBound, int upperBound, Set<Integer> usedOrders) {
         if (lowerBound > upperBound) return -1;
-        for (int candidate = Math.max(1, lowerBound); candidate > 0 && candidate <= upperBound; candidate++) {
+        for (int candidate = Math.max(0, lowerBound); candidate >= 0 && candidate <= upperBound; candidate++) {
             if (!usedOrders.contains(candidate)) return candidate;
         }
         return -1;
