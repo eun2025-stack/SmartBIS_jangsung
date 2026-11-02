@@ -24,7 +24,7 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http.csrf(csrf -> csrf
+        http.cors(org.springframework.security.config.Customizer.withDefaults()).csrf(csrf -> csrf
                         // The dashboard fetches the session token as JSON and echoes it in a request header.
                         // Use the same unmasked token representation for both operations; CSRF remains enabled.
                 .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
