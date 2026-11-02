@@ -1,6 +1,6 @@
 package com.smartbis.backend.arrival;
 
-/** Rev17: first trip visit, even target order, or overdue; never more than one HTTP attempt per visit. */
+/** One logical result per visit. HTTP failure recovery stays within that reservation. */
 public final class ArrivalVisitPolicy {
     private ArrivalVisitPolicy() {}
     public static boolean shouldQuery(int targetOrder,int attempts,boolean firstTripVisit,boolean overdue) {

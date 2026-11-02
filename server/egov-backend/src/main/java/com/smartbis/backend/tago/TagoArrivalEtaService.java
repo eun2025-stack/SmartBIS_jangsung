@@ -60,6 +60,8 @@ public class TagoArrivalEtaService {
     @Value("${tago.arrival.passage-grace-seconds:60}") private long passageGraceSeconds=60;
     @Value("${tago.arrival.daily-limit:9000}") private int dailyLimit=9000;
     @Value("${tago.arrival.stop-step:2}") private int stopStep=2;
+    @Value("${budget.retry_max:2}") private int retryMax=2;
+    @Value("${budget.retry_gap_sec:10}") private long retryGapSeconds=10;
     private ArrivalApiBudget budget;
     private PositionSnapshots snapshots=new PositionSnapshots();
     private com.smartbis.backend.arrival.ArrivalTravelEstimator travel;
@@ -192,13 +194,16 @@ public class TagoArrivalEtaService {
                     failureReason=TagoLocationExecution.failureReason(failure);
                     log.warn("Arrival attempt failed: failureReason={}",TagoLocationExecution.failureReason(failure));
                 }
-                for (var entry:reservations.entrySet()) visits.complete(entry.getKey().vehicleNumber(),entry.getValue(),seconds,policy,failureReason);
+                Instant completedAt=clock.instant();
+                for (var entry:reservations.entrySet()) visits.complete(entry.getKey().vehicleNumber(),entry.getValue(),seconds,policy,failureReason,completedAt);
             }
             // Every assigned vehicle of this route/next stop gets its own geometry snapshot.
             // Other vehicles on the same route never cause duplicate HTTP in this tick.
             for (ArrivalTarget assigned : targets) {
                 if (!assigned.routeId().equals(target.routeId()) || !assigned.stopId().equals(target.stopId())
                         ) continue;
+                if(!reservations.containsKey(assigned)
+                        && !predictions.needsInitialQuery(assigned.vehicleNumber(),assigned.routeId(),assigned.stopId())) continue;
                 var saved=visits.read(assigned.vehicleNumber());
                 Instant queried=saved==null||saved.queriedAt()==null?now:saved.queriedAt();
                 Instant arrival=saved==null?null:saved.arrivalAt();
@@ -284,11 +289,13 @@ public class TagoArrivalEtaService {
                 .build().encode().toUri();
         HttpRequest request = HttpRequest.newBuilder(uri).timeout(REQUEST_TIMEOUT)
                 .header("Accept", "application/xml").GET().build();
-        if(budget==null) budget=new ArrivalApiBudget(enabled&&!mockMode,dailyLimit,new JdbcGuardUsageStore(jdbc),clock);
-        HttpResponse<byte[]> response = budget.execute(()->http.send(request, HttpResponse.BodyHandlers.ofByteArray()));
-        if (response.statusCode() != 200) throw new IllegalStateException("TAGO_HTTP_" + response.statusCode());
-
-        return earliestArrivalSeconds(response.body(), routeId,1);
+        if(budget==null) budget=new ArrivalApiBudget(enabled&&!mockMode,dailyLimit,new JdbcGuardUsageStore(jdbc),clock,
+                retryMax,Math.multiplyExact(retryGapSeconds,1000),Thread::sleep);
+        return budget.execute(()->{
+            HttpResponse<byte[]> response=http.send(request,HttpResponse.BodyHandlers.ofByteArray());
+            if(response.statusCode()!=200) throw new IllegalStateException("TAGO_HTTP_"+response.statusCode());
+            return earliestArrivalSeconds(response.body(),routeId,1);
+        });
     }
 
     static Integer earliestArrivalMinutes(byte[] xml, String routeId) throws Exception {

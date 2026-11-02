@@ -35,12 +35,15 @@ public class ArrivalVisitStore {
             Timestamp.from(now),vehicle,route,stop,direction,Timestamp.from(now));
     }
     public void complete(String vehicle,Visit reservation,Integer etaSeconds,ArrivalRulePolicy policy,String failure) {
-        Instant arrival=!failure.isEmpty()?reservation.arrivalAt():etaSeconds==null?null:reservation.queriedAt().plusSeconds(etaSeconds);
-        Instant next=policy.nextQuery(reservation.queriedAt(),etaSeconds,reservation.attempts());
+        complete(vehicle,reservation,etaSeconds,policy,failure,reservation.queriedAt());
+    }
+    public void complete(String vehicle,Visit reservation,Integer etaSeconds,ArrivalRulePolicy policy,String failure,Instant completedAt) {
+        Instant arrival=!failure.isEmpty()?reservation.arrivalAt():etaSeconds==null?null:completedAt.plusSeconds(etaSeconds);
+        Instant next=policy.nextQuery(completedAt,etaSeconds,reservation.attempts());
         jdbc.update("""
-            UPDATE arrival_query_visits SET estimated_arrival_at=?,next_query_at=?,failure_reason=?
+            UPDATE arrival_query_visits SET estimated_arrival_at=?,next_query_at=?,failure_reason=?,queried_at=?
             WHERE vehicle_number=? AND query_count=? AND queried_at=?
-            """,timestamp(arrival),timestamp(next),failure,vehicle,reservation.attempts(),timestamp(reservation.queriedAt()));
+            """,timestamp(arrival),timestamp(next),failure,timestamp(completedAt),vehicle,reservation.attempts(),timestamp(reservation.queriedAt()));
     }
     private static Instant instant(Timestamp value) { return value==null?null:value.toInstant(); }
     private static Timestamp timestamp(Instant value) { return value==null?null:Timestamp.from(value); }

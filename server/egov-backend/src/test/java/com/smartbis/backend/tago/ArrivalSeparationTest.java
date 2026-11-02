@@ -127,9 +127,10 @@ class ArrivalSeparationTest {
         });
         doAnswer(i->{
             ArrivalVisitStore.Visit reserved=i.getArgument(1); Integer seconds=i.getArgument(2);
-            states.put(i.getArgument(0),new ArrivalVisitStore.Visit(reserved.attempts(),reserved.queriedAt(),
-                seconds==null?null:reserved.queriedAt().plusSeconds(seconds))); return null;
-        }).when(visits).complete(anyString(),any(),nullable(Integer.class),any(),anyString());
+            Instant completed=i.getArgument(5);
+            states.put(i.getArgument(0),new ArrivalVisitStore.Visit(reserved.attempts(),completed,
+                seconds==null?null:completed.plusSeconds(seconds))); return null;
+        }).when(visits).complete(anyString(),any(),nullable(Integer.class),any(),anyString(),any());
         org.springframework.test.util.ReflectionTestUtils.setField(service,"visits",visits);
         return service;
     }
@@ -159,16 +160,16 @@ class ArrivalSeparationTest {
         }
         verify(http).send(any(HttpRequest.class),any(HttpResponse.BodyHandler.class));
         verify(predictions).collectPrediction("전남76아7500","R1","S2",NOW,NOW.plusSeconds(120));
-        // This vehicle's follow-up was not due: another vehicle cannot renew its visit budget/ETA.
-        verify(predictions).collectPrediction("전남76아7501","R1","S2",NOW.minusSeconds(10),NOW.plusSeconds(60));
+        // Another vehicle's recovery must not insert a second final result for this cached visit.
+        verify(predictions,never()).collectPrediction(eq("전남76아7501"),anyString(),anyString(),any(),any());
     }
-    @Test void shortEtaUsesDbAndWritesGeometryWithoutHttp() throws Exception {
+    @Test void shortEtaUsesDbWithoutDuplicatingFinalResultOrHttp() throws Exception {
         JdbcTemplate jdbc=mock(JdbcTemplate.class); ArrivalService predictions=mock(ArrivalService.class);
         HttpClient http=mock(HttpClient.class); var saved=state(60,119);
         when(predictions.savedEta("R1","S2")).thenReturn(saved);
         collector(jdbc,predictions,http).pollNextAssignedArrival();
         verifyNoInteractions(http);
-        verify(predictions).collectPrediction("전남76아7500","R1","S2",saved.queriedAt(),saved.arrivalAt());
+        verify(predictions,never()).collectPrediction(anyString(),anyString(),anyString(),any(),any());
     }
     @Test @SuppressWarnings({"rawtypes","unchecked"})
     void collectorRetainsOriginalArrivalPredictionInsert() {

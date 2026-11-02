@@ -21,11 +21,12 @@ public class ArrivalTravelEstimator {
                 LAG(route_id) OVER w previous_route,LAG(node_order) OVER w previous_order,
                 LAG(observed_at) OVER w previous_at
               FROM bus_positions WHERE source IN ('TAGO','TAGO_OBSERVATION')
+                AND COALESCE(raw_payload->>'interpolated','false')<>'true'
               WINDOW w AS (PARTITION BY vehicle_number ORDER BY observed_at,position_id)
             ), valid AS (
-              SELECT *,EXTRACT(EPOCH FROM observed_at-previous_at)/(node_order-previous_order) seconds
+              SELECT *,EXTRACT(EPOCH FROM observed_at-previous_at)/NULLIF(node_order-previous_order,0) seconds
               FROM sequence WHERE route_id=? AND previous_route=route_id
-                AND node_order>previous_order AND node_order-previous_order<=6
+                AND previous_order>=0 AND node_order>previous_order AND node_order-previous_order<=6
                 AND observed_at>previous_at AND observed_at-previous_at<=INTERVAL '30 minutes'
                 AND (observed_at AT TIME ZONE 'Asia/Seoul')::date=(previous_at AT TIME ZONE 'Asia/Seoul')::date
                 AND EXTRACT(HOUR FROM previous_at AT TIME ZONE 'Asia/Seoul')=?
