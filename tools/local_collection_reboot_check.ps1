@@ -22,9 +22,17 @@ if($Prepare) {
             }
         }
     }
-    $policy=Bounded @('podman','inspect','smartbis_jangsung-postgres-db-1','--format','{{.HostConfig.RestartPolicy.Name}}')
+    foreach($startup in @([Environment]::GetFolderPath('Startup'),[Environment]::GetFolderPath('CommonStartup'))) {
+        if($startup -and (Test-Path -LiteralPath $startup)) {
+            if(@(Get-ChildItem -LiteralPath $startup -Name | Where-Object { $_ -match 'podman' }).Count -gt 0) { $registered=$true }
+        }
+    }
+    $inspection=Bounded -Arguments @('podman','inspect','smartbis_jangsung-postgres-db-1','--format','json') | ConvertFrom-Json
+    $policy=$inspection[0].HostConfig.RestartPolicy.Name
+    Write-Output ('Podman startup registration verified: '+$registered)
+    Write-Output ('PostgreSQL restart policy supported: '+($policy -in @('always','unless-stopped')))
     if(-not $registered -or $policy -notin @('always','unless-stopped')) { throw 'AUTOSTART_PREREQUISITE_NOT_VERIFIED' }
-    $python=Bounded @('python','-c','import sys; print(sys.executable)')
+    $python=Bounded -Arguments @('python','-c','import sys; print(sys.executable)')
     $state=[ordered]@{bootTime=BootTime;preparedAt=[DateTimeOffset]::UtcNow.ToString('o');podmanLoginStartupRegistered=$registered;postgresRestartPolicy=$policy;pythonExecutable=$python.Trim();trial=1}
     $script=Join-Path $PSScriptRoot 'local_collection_reboot_check.ps1'
     $command='"'+$timeoutExe+'" 600 powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+$script+'" -AfterReboot'
@@ -46,10 +54,10 @@ if($AfterReboot) {
         $watch=[Diagnostics.Stopwatch]::StartNew()
         while($watch.Elapsed.TotalSeconds -lt 240) {
             try {
-                $machines=Bounded @('podman','machine','list','--format','json') | ConvertFrom-Json
+                $machines=Bounded -Arguments @('podman','machine','list','--format','json') | ConvertFrom-Json
                 $state.machineRunning=(@($machines | Where-Object { $_.Running -eq $true -or $_.State -eq 'running' }).Count -gt 0)
-                $pg=Bounded @('podman','ps','--filter','name=smartbis_jangsung-postgres-db-1','--format','{{.Names}}')
-                $state.postgresRunning=($pg.Trim() -eq 'smartbis_jangsung-postgres-db-1')
+                $pg=Bounded -Arguments @('podman','ps','--filter','name=smartbis_jangsung-postgres-db-1','--format','json') | ConvertFrom-Json
+                $state.postgresRunning=(@($pg | Where-Object { @($_.Names) -contains 'smartbis_jangsung-postgres-db-1' }).Count -gt 0)
                 if($state.machineRunning -and $state.postgresRunning) { break }
             } catch { }
             [Threading.Thread]::Sleep(5000)
