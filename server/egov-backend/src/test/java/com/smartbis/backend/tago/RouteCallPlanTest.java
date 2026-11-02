@@ -87,10 +87,17 @@ class RouteCallPlanTest {
         verify(store,atLeastOnce()).claim(captor.capture(),eq(NOW));
         assertTrue(captor.getAllValues().stream().allMatch(s->NOW.isBefore(s.expiresAt())));
     }
-    @Test void invalidHundredPlanAndDuplicateRoutesFailClosed() {
-        var bad=new RouteCallSchedule.Plan("H","100번",true,List.of(),null,new RouteCallSchedule.Window(0,86400,1800),null);
-        assertThrows(IllegalArgumentException.class,()->RouteCallSchedule.compile(List.of(bad),DAY,KST,false));
-        assertThrows(IllegalArgumentException.class,()->RouteCallSchedule.compile(List.of(plan(true,null),plan(true,null)),DAY,KST,false));
+    @Test void hundredPlanWithoutServiceUsesOnlyBackupSweep() {
+        var backupOnly=new RouteCallSchedule.Plan("H","100번",true,List.of(),null,new RouteCallSchedule.Window(0,86400,1800),null);
+        var result=assertDoesNotThrow(()->RouteCallSchedule.compile(List.of(backupOnly),DAY,KST,false));
+        assertEquals(0,result.summary().hundred());
+        assertEquals(48,result.summary().backup());
+        assertEquals(48,result.slots().size());
+        assertTrue(result.slots().stream().allMatch(s->s.roles().equals(Set.of(RouteCallSchedule.Role.BACKUP))));
+    }
+    @Test void duplicateRouteIdsFailClosed() {
+        var error=assertThrows(IllegalArgumentException.class,()->RouteCallSchedule.compile(List.of(plan(true,null),plan(true,null)),DAY,KST,false));
+        assertEquals("LOCATION_PLAN_DUPLICATE_ROUTE",error.getMessage());
     }
     @Test void hardBudgetAndRetrySettingsCannotBeRaisedAbove9500OrTwo() {
         var p=new LocationCollectionProperties(); p.setDailyLimit(9501);
