@@ -41,9 +41,8 @@ public class ArrivalService {
                     SELECT a.*,
                        (SELECT MIN(p.observed_at) FROM bus_positions p
                         JOIN bus_route_stops s ON s.route_id=a.route_id AND s.node_id=a.next_node_id
-                          AND s.direction=a.arrival_direction
                         WHERE p.vehicle_number=a.vehicle_number AND p.route_id=a.route_id
-                          AND p.direction=a.arrival_direction AND p.node_order>s.node_order
+                          AND p.node_order>s.node_order
                           AND p.observed_at>=a.eta_queried_at AND p.observed_at<=CURRENT_TIMESTAMP
                           AND COALESCE(p.raw_payload->>'interpolated','false') NOT IN ('true','1')
                        ) AS passed_at
@@ -93,10 +92,10 @@ public class ArrivalService {
     /** Collector-only: detect a new trip/next-stop transition from persisted geometry. */
     public boolean needsInitialQuery(String vehicleNumber,String routeId,String stopId) {
         Boolean needed=jdbcTemplate.query("""
-                SELECT route_id,next_node_id,observed_at<CURRENT_TIMESTAMP-INTERVAL '2 minutes' AS stale
+                SELECT route_id,next_node_id
                 FROM arrival_predictions WHERE vehicle_number=?
                 ORDER BY observed_at DESC,prediction_id DESC LIMIT 1
-                """, rs -> !rs.next() || rs.getBoolean("stale")
+                """, rs -> !rs.next()
                     || !routeId.equals(rs.getString("route_id")) || !stopId.equals(rs.getString("next_node_id")), vehicleNumber);
         return Boolean.TRUE.equals(needed);
     }
@@ -108,8 +107,8 @@ public class ArrivalService {
                        latitude, longitude
                   FROM bus_positions
                  WHERE vehicle_number = ?
-                   AND direction IN ('UP', 'DOWN')
-                   AND observed_at >= CURRENT_TIMESTAMP - INTERVAL '2 minutes'
+                   AND source IN ('TAGO','TAGO_OBSERVATION')
+                   AND COALESCE(raw_payload->>'interpolated','false') NOT IN ('true','1')
                  ORDER BY observed_at DESC
                  LIMIT 1
                 """, rs -> {
@@ -117,15 +116,12 @@ public class ArrivalService {
                 return null;
             }
 
-            return Map.of(
-                    "vehicleNumber", rs.getString("vehicle_number"),
-                    "routeId", rs.getString("route_id"),
-                    "direction", rs.getString("direction"),
-                    "nodeId", rs.getString("node_id"),
-                    "nodeOrder", rs.getInt("node_order"),
-                    "latitude", rs.getBigDecimal("latitude"),
-                    "longitude", rs.getBigDecimal("longitude")
-            );
+            var result=new java.util.HashMap<String,Object>();
+            result.put("vehicleNumber",rs.getString("vehicle_number"));result.put("routeId",rs.getString("route_id"));
+            result.put("direction",rs.getString("direction")==null?"GLOBAL":rs.getString("direction"));
+            result.put("nodeId",rs.getString("node_id"));result.put("nodeOrder",rs.getInt("node_order"));
+            result.put("latitude",rs.getBigDecimal("latitude"));result.put("longitude",rs.getBigDecimal("longitude"));
+            return result;
         }, vehicleNumber);
 
         if (position == null) {
@@ -149,8 +145,6 @@ public class ArrivalService {
                     ON current_route_stop.node_id = current_stop.node_id
                   JOIN bus_route_stops next_route_stop
                     ON next_route_stop.route_id = current_route_stop.route_id
-                   AND next_route_stop.direction = current_route_stop.direction
-                   AND next_route_stop.direction = ?
                    AND next_route_stop.node_order = current_route_stop.node_order + 1
                   JOIN bus_stops next_stop
                     ON next_stop.node_id = next_route_stop.node_id
@@ -163,18 +157,13 @@ public class ArrivalService {
                 return null;
             }
 
-            return Map.of(
-                    "currentNodeId", rs.getString("current_node_id"),
-                    "nextNodeId", rs.getString("next_node_id"),
-                    "currentName", rs.getString("current_name"),
-                    "nextName", rs.getString("next_name"),
-                    "currentLatitude", rs.getBigDecimal("current_latitude"),
-                    "currentLongitude", rs.getBigDecimal("current_longitude"),
-                    "latitude", rs.getBigDecimal("latitude"),
-                    "longitude", rs.getBigDecimal("longitude")
-            );
+            var result=new java.util.HashMap<String,Object>();
+            result.put("currentNodeId",rs.getString("current_node_id"));result.put("nextNodeId",rs.getString("next_node_id"));
+            result.put("currentName",rs.getString("current_name"));result.put("nextName",rs.getString("next_name"));
+            result.put("currentLatitude",rs.getBigDecimal("current_latitude"));result.put("currentLongitude",rs.getBigDecimal("current_longitude"));
+            result.put("latitude",rs.getBigDecimal("latitude"));result.put("longitude",rs.getBigDecimal("longitude"));
+            return result;
         },
-        position.get("direction"),
         position.get("routeId"),
         position.get("nodeId"),
         position.get("nodeOrder"));
@@ -189,23 +178,13 @@ public class ArrivalService {
         // A position may change after target selection. Never attach an old target's ETA to a new stop.
         if (!expectedRoute.equals(position.get("routeId")) || !expectedStop.equals(stop.get("nextNodeId"))) return;
 
-        double distance = distanceMeters(
-                ((BigDecimal) position.get("latitude")).doubleValue(),
-                ((BigDecimal) position.get("longitude")).doubleValue(),
-                ((BigDecimal) stop.get("latitude")).doubleValue(),
-                ((BigDecimal) stop.get("longitude")).doubleValue()
-        );
-        double distanceFromCurrentStop = distanceMeters(
-                ((BigDecimal) position.get("latitude")).doubleValue(),
-                ((BigDecimal) position.get("longitude")).doubleValue(),
-                ((BigDecimal) stop.get("currentLatitude")).doubleValue(),
-                ((BigDecimal) stop.get("currentLongitude")).doubleValue()
-        );
+        double distance=coordinateDistance(position.get("latitude"),position.get("longitude"),stop.get("latitude"),stop.get("longitude"));
+        double distanceFromCurrentStop=coordinateDistance(position.get("latitude"),position.get("longitude"),stop.get("currentLatitude"),stop.get("currentLongitude"));
 
         boolean within100m = distance <= 100.0;
-        BigDecimal roundedDistance = BigDecimal.valueOf(distance)
+        BigDecimal roundedDistance = !Double.isFinite(distance)?null:BigDecimal.valueOf(distance)
                 .setScale(2, RoundingMode.HALF_UP);
-        BigDecimal roundedDistanceFromCurrentStop = BigDecimal.valueOf(distanceFromCurrentStop)
+        BigDecimal roundedDistanceFromCurrentStop = !Double.isFinite(distanceFromCurrentStop)?null:BigDecimal.valueOf(distanceFromCurrentStop)
                 .setScale(2, RoundingMode.HALF_UP);
 
         jdbcTemplate.update("""
@@ -226,7 +205,7 @@ public class ArrivalService {
                     arrival_direction
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP,
-                        CURRENT_TIMESTAMP + INTERVAL '2 minutes', ?, ?, ?, ?)
+                        NULL, ?, ?, ?, ?)
                 """,
                 vehicleNumber,
                 position.get("routeId"),
@@ -244,6 +223,11 @@ public class ArrivalService {
     }
 
     private static Instant instant(Timestamp value) { return value==null?null:value.toInstant(); }
+    private double coordinateDistance(Object lat1,Object lon1,Object lat2,Object lon2) {
+        if(lat1==null||lon1==null||lat2==null||lon2==null) return Double.NaN;
+        return distanceMeters(((Number)lat1).doubleValue(),((Number)lon1).doubleValue(),
+            ((Number)lat2).doubleValue(),((Number)lon2).doubleValue());
+    }
 
     private double distanceMeters(
             double lat1,

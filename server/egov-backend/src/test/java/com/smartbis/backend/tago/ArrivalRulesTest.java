@@ -18,26 +18,27 @@ class ArrivalRulesTest {
     final Instant start=Instant.parse("2026-10-24T00:00:00Z");
     final ArrivalRulePolicy policy=ArrivalRulePolicy.defaults();
     @Test void requestedScheduleTable() {
-        int[] eta={200,150,90,50,20}; long[] due={60,75,45,50,20};
+        int[] eta={200,150,90,50,20};
         for (int i=0;i<eta.length;i++) {
-            assertEquals(start.plusSeconds(due[i]),policy.nextQuery(start,eta[i],1));
+            assertEquals(start,policy.nextQuery(start,eta[i],0));
+            assertNull(policy.nextQuery(start,eta[i],1));
             assertNull(policy.nextQuery(start,eta[i],2));
             String text=policy.display(start.plusSeconds(eta[i]),null,start);
             assertEquals(eta[i]<=30?"곧 도착":"도착 예정",text);
-            System.out.println("ARRIVAL_RULE_TABLE eta="+eta[i]+" next=+"+due[i]+"s state="+text);
+            System.out.println("ARRIVAL_RULE_TABLE eta="+eta[i]+" next=none-after-first state="+text);
         }
     }
     @Test void lowerAndUpperBoundaryAndMinimumHalfDelay() {
-        assertEquals(start.plusSeconds(30),policy.nextQuery(start,60,1));
-        assertEquals(start.plusSeconds(90),policy.nextQuery(start,179,1));
-        assertEquals(start.plusSeconds(60),policy.nextQuery(start,180,1));
+        assertNull(policy.nextQuery(start,60,1));
+        assertNull(policy.nextQuery(start,179,1));
+        assertNull(policy.nextQuery(start,180,1));
         var configured=new ArrivalRulePolicy(60,180,60,30,.2,30,60);
-        assertEquals(start.plusSeconds(30),configured.nextQuery(start,90,1));
+        assertNull(configured.nextQuery(start,90,1));
     }
     @Test void secondResponseCannotCreateThirdCallAtAnyEta() {
         for (int first:new int[]{20,50,60,90,150,180,200,600})
             for (int second:new int[]{0,20,50,90,150,200,600}) {
-                Instant due=policy.nextQuery(start,first,1);
+                Instant due=policy.nextQuery(start,first,0);
                 assertNotNull(due); assertNull(policy.nextQuery(due,second,2));
             }
     }
@@ -48,7 +49,7 @@ class ArrivalRulesTest {
                 Instant now=start.plusSeconds(second);
                 if (next!=null && !next.isAfter(now)) { count++; next=policy.nextQuery(now,eta,count); }
             }
-            assertEquals(2,count);
+            assertEquals(1,count);
         }
     }
     @Test void imminentIncludesExactlyThirtyAndNegativeBeforeGrace() {
@@ -72,7 +73,7 @@ class ArrivalRulesTest {
     void atomicDbClaimIncludesCapAndVisitIdentityBeforeAnyHttp() {
         JdbcTemplate jdbc=mock(JdbcTemplate.class); ArrivalVisitStore store=new ArrivalVisitStore(jdbc);
         store.claim("V","R","S","UP",start);
-        verify(jdbc).query(argThat((String sql)->sql.contains("query_count<2") && sql.contains("next_query_at<=?")
+        verify(jdbc).query(argThat((String sql)->sql.contains("query_count<1") && sql.contains("next_query_at<=?")
             && sql.contains("direction=?") && sql.contains("RETURNING query_count")),any(ResultSetExtractor.class),any(Object[].class));
     }
     @Test void migrationEnforcesPersistedCapAndNeverEnablesCollection() throws Exception {
@@ -95,20 +96,21 @@ class ArrivalRulesTest {
         doAnswer(i->List.of(new TagoArrivalEtaService.ArrivalTarget("R1","S2","V")))
             .when(jdbc).query(anyString(),any(RowMapper.class),any(Object[].class));
         when(visits.claim(anyString(),anyString(),anyString(),anyString(),any())).thenAnswer(i->{
-            if (attempts.get()>=2) return null;
+            if (attempts.get()>=1) return null;
             return new ArrivalVisitStore.Visit(attempts.incrementAndGet(),start,start.plusSeconds(120));
         });
         when(visits.read("V")).thenAnswer(i->new ArrivalVisitStore.Visit(attempts.get(),start,start.plusSeconds(120)));
         try (MockedStatic<TagoApiRequestThrottle> throttle=mockStatic(TagoApiRequestThrottle.class)) {
             for (int restart=0;restart<2;restart++) {
                 var service=new TagoArrivalEtaService(jdbc,predictions,"mock","AUTO","36450","http://mock.invalid",
-                    true,false,true,false,http,Clock.fixed(start,ZoneOffset.UTC));
+                    true,false,true,true,http,Clock.fixed(start,ZoneOffset.UTC));
+                ArrivalSeparationTest.allowBudget(service);
                 org.springframework.test.util.ReflectionTestUtils.setField(service,"visits",visits);
                 for (int tick=0;tick<20;tick++) service.pollNextAssignedArrival();
             }
         }
-        verify(http,times(2)).send(any(HttpRequest.class),any(HttpResponse.BodyHandler.class));
-        assertEquals(2,attempts.get());
+        verify(http,times(1)).send(any(HttpRequest.class),any(HttpResponse.BodyHandler.class));
+        assertEquals(1,attempts.get());
     }
     @Test @SuppressWarnings({"rawtypes","unchecked"})
     void apiReturnsPresentationFromDatabaseWithoutTago() throws Exception {

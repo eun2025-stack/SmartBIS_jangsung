@@ -11,14 +11,9 @@ public record ArrivalRulePolicy(long requerySeconds,long longEtaSeconds,long hal
             throw new IllegalArgumentException("Invalid arrival rules");
     }
     public static ArrivalRulePolicy defaults() { return new ArrivalRulePolicy(60,180,60,30,.5,30,60); }
-    /** Total cap is immutable: initial + at most one follow-up, including failed attempts. */
+    /** Rev17 hard cap includes failed attempts. Old ETA-band requery rules are retired. */
     public Instant nextQuery(Instant queriedAt,Integer etaSeconds,int attempts) {
-        if (attempts>=2) return null;
-        if (etaSeconds==null) return queriedAt.plusSeconds(requerySeconds);
-        long delay=etaSeconds>=longEtaSeconds ? requerySeconds
-            : etaSeconds>=halfLowerSeconds ? Math.max(halfMinimumSeconds,(long)Math.ceil(etaSeconds*halfRatio))
-            : Math.max(1,etaSeconds);
-        return queriedAt.plusSeconds(delay);
+        return attempts>=1 ? null : queriedAt;
     }
     public String display(Instant expected,Instant passedAt,Instant now) {
         if (expected==null) return "정보 없음";

@@ -50,20 +50,23 @@ public class TagoArrivalEtaService {
     private final String baseUrl;
     private final boolean enabled;
     private final boolean mockMode;
+    private final boolean observationMode;
     private final HttpClient http;
     private final JdbcTemplate jdbc;
     private final ArrivalService predictions;
     private final Clock clock;
     private ArrivalVisitStore visits;
-    @Value("${tago.arrival.half-lower-seconds:60}") private long halfLowerSeconds=60;
     @Value("${tago.arrival.soon-seconds:30}") private long soonSeconds=30;
-    @Value("${tago.arrival.half-ratio:0.5}") private double halfRatio=.5;
-    @Value("${tago.arrival.half-minimum-seconds:30}") private long halfMinimumSeconds=30;
     @Value("${tago.arrival.passage-grace-seconds:60}") private long passageGraceSeconds=60;
-    @Value("${tago.arrival.requery-interval-ms:60000}")
-    private long requeryIntervalMs = 60000;
-    @Value("${tago.arrival.refresh-threshold-minutes:3}")
-    private int refreshThresholdMinutes = 3;
+    @Value("${tago.arrival.daily-limit:9000}") private int dailyLimit=9000;
+    @Value("${tago.arrival.stop-step:2}") private int stopStep=2;
+    private ArrivalApiBudget budget;
+    private PositionSnapshots snapshots=new PositionSnapshots();
+    private com.smartbis.backend.arrival.ArrivalTravelEstimator travel;
+    @Autowired(required=false)
+    void setSnapshots(PositionSnapshots value) { snapshots=value; }
+    @Autowired(required=false)
+    void setTravel(com.smartbis.backend.arrival.ArrivalTravelEstimator value) { travel=value; }
     private final AtomicBoolean batchPolling = new AtomicBoolean();
 
     private volatile String lastBatchResult = "NOT_RUN";
@@ -82,9 +85,10 @@ public class TagoArrivalEtaService {
             @Value("${tago.base-url:http://apis.data.go.kr}") String baseUrl,
             @Value("${tago.enabled:false}") boolean enabled,
             @Value("${tago.mock-mode:true}") boolean mockMode,
-            @Value("${tago.arrival.enabled:true}") boolean arrivalEnabled,
+            @Value("${tago.arrival.enabled:false}") boolean arrivalEnabled,
+            @Value("${tago.vehicle-location.enabled:false}") boolean locationEnabled,
             @Value("${tago.location.observation-mode:false}") boolean observationMode) {
-        this(jdbc,predictions,serviceKey,keyMode,cityCode,baseUrl,enabled,mockMode,arrivalEnabled,observationMode,
+        this(jdbc,predictions,serviceKey,keyMode,cityCode,baseUrl,enabled&&locationEnabled,mockMode,arrivalEnabled,observationMode,
                 HttpClient.newBuilder().connectTimeout(REQUEST_TIMEOUT).build(),Clock.systemUTC());
     }
 
@@ -105,9 +109,11 @@ public class TagoArrivalEtaService {
         this.keyMode = keyMode == null ? "AUTO" : keyMode.trim().toUpperCase();
         this.cityCode = cityCode == null ? "" : cityCode.trim();
         this.baseUrl = baseUrl == null ? "" : baseUrl.replaceAll("/+$", "");
-        this.enabled = enabled && arrivalEnabled && !observationMode;
+        this.enabled = enabled && arrivalEnabled;
+        this.observationMode=observationMode;
         this.mockMode = mockMode;
         this.http = http;
+        this.travel=new com.smartbis.backend.arrival.ArrivalTravelEstimator(jdbc);
     }
 
     /** Compatibility DB-only accessor. App API does not inject this TAGO collector. */
@@ -125,15 +131,12 @@ public class TagoArrivalEtaService {
 
     static boolean shouldRefresh(ArrivalService.EtaState saved,Instant now,long intervalMs,int thresholdMinutes) {
         if (intervalMs<=0 || thresholdMinutes<=0) throw new IllegalArgumentException("Invalid arrival refresh policy");
-        if (saved==null) return true;
-        var policy=new ArrivalRulePolicy(intervalMs/1000,thresholdMinutes*60L,60,30,.5,30,60);
-        Integer eta=saved.arrivalAt()==null?null:(int)Duration.between(saved.queriedAt(),saved.arrivalAt()).getSeconds();
-        return !policy.nextQuery(saved.queriedAt(),eta,1).isAfter(now);
+        return saved==null; // Compatibility accessor; ETA-band requery policy is retired.
     }
 
     @Scheduled(
             fixedDelayString = "${tago.arrival.poll-interval-ms:10000}",
-            initialDelay = 20000
+            initialDelay = 20000, scheduler="arrivalScheduler"
     )
     public void pollNextAssignedArrival() {
         if (!enabled || mockMode || serviceKey.isBlank() || cityCode.isBlank()) {
@@ -164,34 +167,45 @@ public class TagoArrivalEtaService {
             lastBatchStopId = target.stopId();
 
             Instant now = clock.instant();
-            ArrivalRulePolicy policy=new ArrivalRulePolicy(requeryIntervalMs/1000,refreshThresholdMinutes*60L,
-                halfLowerSeconds,soonSeconds,halfRatio,halfMinimumSeconds,passageGraceSeconds);
+            ArrivalRulePolicy policy=ArrivalRulePolicy.defaults();
             var reservations=new java.util.LinkedHashMap<ArrivalTarget,ArrivalVisitStore.Visit>();
             for (ArrivalTarget assigned:targets) {
                 if (!assigned.routeId().equals(target.routeId()) || !assigned.stopId().equals(target.stopId())
-                        || !assigned.direction().equals(target.direction())) continue;
+                        ) continue;
                 visits.ensure(assigned.vehicleNumber(),assigned.routeId(),assigned.stopId(),assigned.direction(),now);
+                var prior=visits.read(assigned.vehicleNumber());
+                var savedEta=predictions.savedEta(assigned.routeId(),assigned.stopId());
+                boolean overdue=savedEta!=null && savedEta.arrivalAt()!=null && !now.isBefore(savedEta.arrivalAt());
+                if(!com.smartbis.backend.arrival.ArrivalVisitPolicy.shouldQuery(assigned.nodeOrder(),
+                    prior==null?0:prior.attempts(),assigned.currentOrder()==0,overdue,stopStep)) continue;
                 var reservation=visits.claim(assigned.vehicleNumber(),assigned.routeId(),assigned.stopId(),assigned.direction(),now);
                 if (reservation!=null) reservations.put(assigned,reservation);
             }
             Integer seconds=null;
+            String failureReason="";
             if (!reservations.isEmpty()) {
                 try { seconds=requestSeconds(target.routeId(),target.stopId()); }
-                catch (Exception failure) {
-                    for (var entry:reservations.entrySet()) visits.complete(entry.getKey().vehicleNumber(),entry.getValue(),null,policy,failure.getClass().getSimpleName());
-                    throw failure;
+                catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();throw interrupted;
                 }
-                for (var entry:reservations.entrySet()) visits.complete(entry.getKey().vehicleNumber(),entry.getValue(),seconds,policy,"");
+                catch (Exception failure) {
+                    failureReason=TagoLocationExecution.failureReason(failure);
+                    log.warn("Arrival attempt failed: failureReason={}",TagoLocationExecution.failureReason(failure));
+                }
+                for (var entry:reservations.entrySet()) visits.complete(entry.getKey().vehicleNumber(),entry.getValue(),seconds,policy,failureReason);
             }
             // Every assigned vehicle of this route/next stop gets its own geometry snapshot.
             // Other vehicles on the same route never cause duplicate HTTP in this tick.
             for (ArrivalTarget assigned : targets) {
                 if (!assigned.routeId().equals(target.routeId()) || !assigned.stopId().equals(target.stopId())
-                        || !assigned.direction().equals(target.direction())) continue;
+                        ) continue;
                 var saved=visits.read(assigned.vehicleNumber());
-                if (saved==null || saved.queriedAt()==null) continue;
+                Instant queried=saved==null||saved.queriedAt()==null?now:saved.queriedAt();
+                Instant arrival=saved==null?null:saved.arrivalAt();
+                if(arrival==null) arrival=queried.plusSeconds(travel.estimateSeconds(assigned.routeId(),assigned.currentOrder(),assigned.nodeOrder(),now));
+                if(!observationMode) continue;
                 try {
-                    predictions.collectPrediction(assigned.vehicleNumber(),target.routeId(),target.stopId(),saved.queriedAt(),saved.arrivalAt());
+                    predictions.collectPrediction(assigned.vehicleNumber(),target.routeId(),target.stopId(),queried,arrival);
                 } catch (org.springframework.web.server.ResponseStatusException unavailable) {
                     if (unavailable.getStatusCode().value()!=404) throw unavailable;
                     log.info("Arrival geometry unavailable: vehicle={}",assigned.vehicleNumber());
@@ -219,44 +233,43 @@ public class TagoArrivalEtaService {
     }
 
     private List<ArrivalTarget> loadAssignedArrivalTargets() {
+        if(!snapshots.all().isEmpty()) {
+            var result=new ArrayList<ArrivalTarget>();
+            for(var position:snapshots.all()) {
+                if(position.order()==null||position.order()<0) continue;
+                result.addAll(jdbc.query("""
+                    SELECT node_id,node_order FROM bus_route_stops
+                    WHERE route_id=? AND node_order=?+1 ORDER BY node_id LIMIT 1
+                    """,(rs,n)->new ArrivalTarget(position.route(),rs.getString(1),position.vehicle(),"GLOBAL",
+                        rs.getInt(2),position.order()),position.route(),position.order()));
+            }
+            return result;
+        }
         return jdbc.query("""
-                SELECT DISTINCT position.route_id, next_stop.node_id, assignment.vehicle_number,position.direction
-                FROM android_device_vehicle_assignments assignment
-                JOIN bus_vehicles vehicle
-                    ON vehicle.vehicle_number = assignment.vehicle_number
-                AND vehicle.active = true
-                JOIN bus_routes route
-                    ON route.route_id = vehicle.route_id
-                AND route.city_code = vehicle.city_code
-                AND route.active = true
-                JOIN LATERAL (
-                        SELECT p.route_id, p.direction, p.node_id, p.node_order
-                        FROM bus_positions p
-                        WHERE p.vehicle_number = assignment.vehicle_number
-                        AND p.observed_at >= CURRENT_TIMESTAMP - INTERVAL '2 minutes'
-                        AND p.direction IN ('UP', 'DOWN')
-                        ORDER BY p.observed_at DESC
-                        LIMIT 1
-                ) position ON position.route_id = route.route_id
-                JOIN bus_route_stops current_stop
-                    ON current_stop.route_id = position.route_id
-                AND current_stop.direction = position.direction
-                AND current_stop.node_id = position.node_id
-                AND current_stop.node_order = position.node_order
+                WITH position AS (
+                  SELECT DISTINCT ON (p.vehicle_number) p.*
+                  FROM bus_positions p
+                  WHERE p.source IN ('TAGO','TAGO_OBSERVATION') AND p.node_order>=0
+                    AND COALESCE(p.raw_payload->>'interpolated','false') NOT IN ('true','1')
+                  ORDER BY p.vehicle_number,p.observed_at DESC,p.position_id DESC
+                )
+                SELECT DISTINCT position.route_id,next_stop.node_id,position.vehicle_number,
+                       'GLOBAL',next_stop.node_order,position.node_order
+                FROM position JOIN bus_routes route ON route.route_id=position.route_id AND route.active=true
                 JOIN bus_route_stops next_stop
-                    ON next_stop.route_id = current_stop.route_id
-                AND next_stop.direction = current_stop.direction
-                AND next_stop.node_order = current_stop.node_order + 1
+                    ON next_stop.route_id = position.route_id
+                AND next_stop.node_order = position.node_order + 1
                 WHERE route.city_code = ?
-                ORDER BY position.route_id, next_stop.node_id, assignment.vehicle_number,position.direction
+                ORDER BY position.route_id,next_stop.node_id,position.vehicle_number
                 """,
-                (rs, rowNum) -> new ArrivalTarget(rs.getString(1), rs.getString(2),rs.getString(3),rs.getString(4)),
+                (rs, rowNum) -> new ArrivalTarget(rs.getString(1),rs.getString(2),rs.getString(3),rs.getString(4),rs.getInt(5),rs.getInt(6)),
                 cityCode
         );
     }
 
-    record ArrivalTarget(String routeId, String stopId, String vehicleNumber,String direction) {
-        ArrivalTarget(String routeId,String stopId,String vehicleNumber) { this(routeId,stopId,vehicleNumber,"UP"); }
+    record ArrivalTarget(String routeId, String stopId, String vehicleNumber,String direction,int nodeOrder,int currentOrder) {
+        ArrivalTarget(String routeId,String stopId,String vehicleNumber) { this(routeId,stopId,vehicleNumber,"GLOBAL",2,1); }
+        ArrivalTarget(String routeId,String stopId,String vehicleNumber,String direction) { this(routeId,stopId,vehicleNumber,direction,2,1); }
     }    
 
     private Integer requestSeconds(String routeId, String stopId) throws Exception {
@@ -271,11 +284,11 @@ public class TagoArrivalEtaService {
                 .build().encode().toUri();
         HttpRequest request = HttpRequest.newBuilder(uri).timeout(REQUEST_TIMEOUT)
                 .header("Accept", "application/xml").GET().build();
-        TagoApiRequestThrottle.awaitRequestSlot();
-        HttpResponse<byte[]> response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        if(budget==null) budget=new ArrivalApiBudget(enabled&&!mockMode,dailyLimit,new JdbcGuardUsageStore(jdbc),clock);
+        HttpResponse<byte[]> response = budget.execute(()->http.send(request, HttpResponse.BodyHandlers.ofByteArray()));
         if (response.statusCode() != 200) throw new IllegalStateException("TAGO_HTTP_" + response.statusCode());
 
-        return earliestArrivalSeconds(response.body(), routeId);
+        return earliestArrivalSeconds(response.body(), routeId,1);
     }
 
     static Integer earliestArrivalMinutes(byte[] xml, String routeId) throws Exception {
@@ -283,6 +296,9 @@ public class TagoArrivalEtaService {
         return seconds==null?null:(seconds+59)/60;
     }
     static Integer earliestArrivalSeconds(byte[] xml, String routeId) throws Exception {
+        return earliestArrivalSeconds(xml,routeId,null);
+    }
+    static Integer earliestArrivalSeconds(byte[] xml,String routeId,Integer remainingStops) throws Exception {
         Document document = parseXml(xml);
         Element root = document.getDocumentElement();
         Element header = first(root, "header");
@@ -294,7 +310,9 @@ public class TagoArrivalEtaService {
         Element items = body == null ? null : first(body, "items");
         Integer earliestSeconds = null;
         for (Element item : children(items, "item")) {
-            if (!routeId.equals(text(item, "routeid"))) continue;
+            if (!RouteIdNormalizer.normalize(routeId).equals(RouteIdNormalizer.normalize(text(item, "routeid")))) continue;
+            String remaining=text(item,"arrprevstationcnt");
+            if(remainingStops!=null && !remaining.isBlank() && integer(remaining,-1)!=remainingStops) continue;
             int seconds = integer(text(item, "arrtime"), -1);
             if (seconds >= 0 && (earliestSeconds == null || seconds < earliestSeconds)) {
                 earliestSeconds = seconds;

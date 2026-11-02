@@ -29,7 +29,7 @@ public class ArrivalVisitStore {
         return jdbc.query("""
             UPDATE arrival_query_visits SET query_count=query_count+1,queried_at=?,next_query_at=NULL
             WHERE vehicle_number=? AND route_id=? AND stop_id=? AND direction=?
-              AND query_count<2 AND next_query_at<=?
+              AND query_count<1 AND next_query_at<=?
             RETURNING query_count,queried_at,estimated_arrival_at
             """,rs->!rs.next()?null:new Visit(rs.getInt(1),instant(rs.getTimestamp(2)),instant(rs.getTimestamp(3))),
             Timestamp.from(now),vehicle,route,stop,direction,Timestamp.from(now));

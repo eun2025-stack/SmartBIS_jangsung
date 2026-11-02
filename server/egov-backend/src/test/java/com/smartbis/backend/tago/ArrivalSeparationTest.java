@@ -30,18 +30,18 @@ class ArrivalSeparationTest {
 
     @Test void firstQuery() { assertTrue(refresh(null)); }
     @Test void threeMinutesMustWaitForRequeryInterval() {
-        assertFalse(refresh(state(59,121))); assertTrue(refresh(state(60,120)));
-        assertTrue(refresh(state(60,121)));
+        assertFalse(refresh(state(59,121))); assertFalse(refresh(state(60,120)));
+        assertFalse(refresh(state(60,121)));
     }
     @Test void middleEtaWaitsUntilHalfThenAllowsSingleFollowup() {
-        assertFalse(refresh(state(60,119))); assertTrue(refresh(state(178,1)));
+        assertFalse(refresh(state(60,119))); assertFalse(refresh(state(178,1)));
     }
     @Test void elapsedTimeStillUnpassedRequeries() {
-        assertTrue(refresh(state(60,0))); assertTrue(refresh(state(60,-1)));
+        assertFalse(refresh(state(60,0))); assertFalse(refresh(state(60,-1)));
     }
     @Test void noEtaDoesNotInventAnArrivalAndUsesSixtySecondBackoff() {
         assertFalse(refresh(new ArrivalService.EtaState(NOW.minusSeconds(59),null)));
-        assertTrue(refresh(new ArrivalService.EtaState(NOW.minusSeconds(60),null)));
+        assertFalse(refresh(new ArrivalService.EtaState(NOW.minusSeconds(60),null)));
     }
     @Test void policyValuesAreConfigurableAndValidated() {
         assertFalse(TagoArrivalEtaService.shouldRefresh(state(60,240),NOW,120000,3));
@@ -54,8 +54,8 @@ class ArrivalSeparationTest {
             context.registerBean(JdbcTemplate.class,()->jdbc);
             context.register(ArrivalService.class,TagoArrivalEtaService.class);
             context.refresh();
-            assertEquals("60000",context.getEnvironment().getProperty("tago.arrival.requery-interval-ms"));
-            assertEquals("3",context.getEnvironment().getProperty("tago.arrival.refresh-threshold-minutes"));
+            assertNull(context.getEnvironment().getProperty("tago.arrival.requery-interval-ms"));
+            assertNull(context.getEnvironment().getProperty("tago.arrival.refresh-threshold-minutes"));
             verify(jdbc).afterPropertiesSet();
             verifyNoMoreInteractions(jdbc);
             clearInvocations(jdbc); // Spring's bean lifecycle is not a SQL/HTTP collection attempt.
@@ -110,16 +110,17 @@ class ArrivalSeparationTest {
                            new TagoArrivalEtaService.ArrivalTarget("R1","S2","전남76아7501")))
             .when(jdbc).query(anyString(),any(RowMapper.class),any(Object[].class));
         var service=new TagoArrivalEtaService(jdbc,predictions,"mock-key","AUTO","36450","http://mock.invalid",
-            true,false,true,false,http,Clock.fixed(NOW,ZoneOffset.UTC));
+            true,false,true,true,http,Clock.fixed(NOW,ZoneOffset.UTC));
+        allowBudget(service);
         ArrivalVisitStore visits=mock(ArrivalVisitStore.class);
         Map<String,ArrivalVisitStore.Visit> states=new HashMap<>();
         var saved=predictions.savedEta("R1","S2");
         if (saved!=null) for (String vehicle:List.of("전남76아7500","전남76아7501"))
-            states.put(vehicle,new ArrivalVisitStore.Visit(1,saved.queriedAt(),saved.arrivalAt()));
+            if(!predictions.needsInitialQuery(vehicle,"R1","S2")) states.put(vehicle,new ArrivalVisitStore.Visit(1,saved.queriedAt(),saved.arrivalAt()));
         when(visits.read(anyString())).thenAnswer(i->states.get(i.getArgument(0)));
         when(visits.claim(anyString(),anyString(),anyString(),anyString(),any())).thenAnswer(i->{
             String vehicle=i.getArgument(0); var prior=states.get(vehicle);
-            if (prior!=null && prior.attempts()>=2) return null;
+            if (prior!=null && prior.attempts()>=1) return null;
             if (!predictions.needsInitialQuery(vehicle,"R1","S2") && prior!=null
                     && !refresh(new ArrivalService.EtaState(prior.queriedAt(),prior.arrivalAt()))) return null;
             return new ArrivalVisitStore.Visit(prior==null?1:prior.attempts()+1,NOW,prior==null?null:prior.arrivalAt());
@@ -131,6 +132,13 @@ class ArrivalSeparationTest {
         }).when(visits).complete(anyString(),any(),nullable(Integer.class),any(),anyString());
         org.springframework.test.util.ReflectionTestUtils.setField(service,"visits",visits);
         return service;
+    }
+    @SuppressWarnings({"unchecked","rawtypes"})
+    static void allowBudget(TagoArrivalEtaService service) {
+        var budget=mock(ArrivalApiBudget.class);
+        try { doAnswer(i->((TagoLocationExecution.Call<?>)i.getArgument(0)).run()).when(budget).execute(any()); }
+        catch(Exception e) { throw new AssertionError(e); }
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"budget",budget);
     }
     @SuppressWarnings({"rawtypes","unchecked"})
     HttpClient mockHttp() throws Exception {
@@ -206,10 +214,10 @@ class ArrivalSeparationTest {
     }
     @Test void equalDailyCountsDoNotMeanIdenticalRequeryTiming() {
         var policy=ArrivalRulePolicy.defaults();
-        assertEquals(NOW.plusSeconds(45),policy.nextQuery(NOW,90,1));
-        assertEquals(NOW.plusSeconds(60),policy.nextQuery(NOW,360,1));
-        assertEquals(2,simulate(1,90));
-        assertEquals(2,simulate(1,360));
+        assertNull(policy.nextQuery(NOW,90,1));
+        assertNull(policy.nextQuery(NOW,360,1));
+        assertEquals(1,simulate(1,90));
+        assertEquals(1,simulate(1,360));
         // Visits shorter than the half-ETA band pass before another 10-second tick is due.
         assertEquals(1,simulate(1,50));
         assertNull(policy.nextQuery(NOW,90,2));
@@ -223,16 +231,16 @@ class ArrivalSeparationTest {
             if ("기점".equals(d.required("direction").asText())) up++; else down++;
         }
         int upStops=0,downStops=0;
-        for (String line:Files.readAllLines(root.resolve("장성교통 노선도/TAGO_장성군_노선별_경유정류소_20261002.csv"))) {
+        for (String line:Files.readAllLines(root.resolve("노선 및 운행 관련 자료/군민운수 제공 노선 및 운행 관련 자료/TAGO_장성군_노선별_경유정류소_20261002.csv"))) {
             String[] cells=line.split(",",-1);
             if (cells.length>6 && route.equals(cells[1])) {
                 if ("UP".equals(cells[6])) upStops++; else if ("DOWN".equals(cells[6])) downStops++;
             }
         }
         assertEquals(3,up); assertEquals(3,down); assertEquals(11,upStops); assertEquals(12,downStops);
-        int shortTrips=up*simulate(upStops-1,900)+down*simulate(downStops-1,900);
-        int hourTrips=up*simulate(upStops-1,3600)+down*simulate(downStops-1,3600);
-        assertEquals(126,shortTrips); assertEquals(126,hourTrips);
+        int shortTrips=up*((upStops+1)/2)+down*((downStops+1)/2);
+        int hourTrips=up*((upStops+1)/2)+down*((downStops+1)/2);
+        assertEquals(36,shortTrips); assertEquals(36,hourTrips);
         System.out.println("ARRIVAL_MOCK_SIMULATION route="+route+" departures=6 stops=23 trip15min="+shortTrips+" trip60min="+hourTrips);
     }
 }

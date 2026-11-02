@@ -13,17 +13,21 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class TagoArrivalEtaServiceTest {
     @Test
-    void observationModeAndArrivalSettingEachPreventArrivalCollection() {
+    void arrivalSettingDisablesCollectionButObservationModeDoesNot() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         var observation = new TagoArrivalEtaService(jdbc, "key", "AUTO", "36450", "http://localhost",
                 true, false, true, true);
-        var disabled = new TagoArrivalEtaService(jdbc, "key", "AUTO", "36450", "http://localhost",
+        JdbcTemplate disabledJdbc=mock(JdbcTemplate.class);
+        var disabled = new TagoArrivalEtaService(disabledJdbc, "key", "AUTO", "36450", "http://localhost",
                 true, false, false, false);
         observation.pollNextAssignedArrival();
         disabled.pollNextAssignedArrival();
         assertNull(observation.estimateMinutes("route", "stop"));
         assertNull(disabled.estimateMinutes("route", "stop"));
-        verifyNoInteractions(jdbc);
+        org.mockito.Mockito.verify(jdbc).query(org.mockito.ArgumentMatchers.contains("WITH position AS"),
+            org.mockito.ArgumentMatchers.any(org.springframework.jdbc.core.RowMapper.class),
+            org.mockito.ArgumentMatchers.any(Object[].class));
+        verifyNoInteractions(disabledJdbc);
     }
 
     @Test
