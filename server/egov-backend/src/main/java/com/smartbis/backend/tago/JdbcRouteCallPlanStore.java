@@ -17,7 +17,7 @@ class JdbcRouteCallPlanStore {
             SELECT route_id,route_group,interval_seconds,enabled,local_windows::text,
                    service_start_seconds,service_end_seconds,backup_interval_seconds,
                    backup_start_seconds,backup_end_seconds,last_attempt_at
-            FROM public.route_call_plan ORDER BY route_id
+            FROM public.route_call_plan WHERE enabled=true ORDER BY route_id
             """, (rs, row) -> {
                 var windows = new ArrayList<RouteCallSchedule.Window>();
                 try {
