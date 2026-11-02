@@ -10,6 +10,8 @@ final class ArrivalApiBudget {
     private final int maxRetries;
     private final long retryGapMillis;
     private final TagoLocationExecution.Sleeper sleeper;
+    private CollectionDeadline deadline=CollectionDeadline.unlimited();
+    void setDeadline(CollectionDeadline deadline) { this.deadline=deadline; }
     ArrivalApiBudget(boolean enabled,int dailyLimit,GuardUsageStore store,Clock clock) {
         this(enabled,dailyLimit,store,clock,2,10000,Thread::sleep);
     }
@@ -26,6 +28,7 @@ final class ArrivalApiBudget {
     <T> T execute(TagoLocationExecution.Call<T> call) throws Exception {
         // A visit owns one logical result; each initial/recovery HTTP attempt consumes its own quota.
         for(int attempt=0;;attempt++) {
+            deadline.requireOpen();
             if(guard.acquire("arrival",10000)!=TagoQuotaGuard.Decision.ALLOWED)
                 throw new IllegalStateException("ARRIVAL_BUDGET_BLOCKED");
             try { return call.run(); }

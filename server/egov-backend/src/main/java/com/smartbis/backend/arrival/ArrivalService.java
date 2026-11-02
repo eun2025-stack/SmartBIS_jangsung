@@ -102,6 +102,21 @@ public class ArrivalService {
 
     /** Called only by the arrival collector; retains the original prediction INSERT. */
     public void collectPrediction(String vehicleNumber,String expectedRoute,String expectedStop, Instant queriedAt, Instant arrivalAt) {
+        collectPrediction(vehicleNumber,expectedRoute,expectedStop,queriedAt,arrivalAt,null);
+    }
+    public record Observation(Instant requestedAt,Integer remainingStops,java.util.UUID visitId,int retryCount,boolean finalResult,boolean interpolated,String failureReason) {}
+    public void collectPrediction(String vehicleNumber,String expectedRoute,String expectedStop,Instant queriedAt,Instant arrivalAt,Observation observation) {
+        Long observationId=null;
+        if(observation!=null) {
+            // Preserve the final response even if position/geometry changed during HTTP recovery.
+            observationId=jdbcTemplate.queryForObject("""
+                INSERT INTO arrival_predictions(vehicle_number,route_id,next_node_id,observed_at,eta_queried_at,estimated_arrival_at,
+                  requested_at,arrprevstationcnt,visit_id,retry_count,is_final,interpolated,failure_reason)
+                VALUES(?,?,?,CURRENT_TIMESTAMP,?,?,?,?,?,?,?,?,?) RETURNING prediction_id
+                """,Long.class,vehicleNumber,expectedRoute,expectedStop,queriedAt==null?null:Timestamp.from(queriedAt),
+                arrivalAt==null?null:Timestamp.from(arrivalAt),Timestamp.from(observation.requestedAt()),observation.remainingStops(),
+                observation.visitId(),observation.retryCount(),observation.finalResult(),observation.interpolated(),observation.failureReason());
+        }
         Map<String, Object> position = jdbcTemplate.query("""
                 SELECT vehicle_number, route_id, direction, node_id, node_order,
                        latitude, longitude
@@ -187,6 +202,19 @@ public class ArrivalService {
         BigDecimal roundedDistanceFromCurrentStop = !Double.isFinite(distanceFromCurrentStop)?null:BigDecimal.valueOf(distanceFromCurrentStop)
                 .setScale(2, RoundingMode.HALF_UP);
 
+        if(observation!=null) {
+            jdbcTemplate.update("""
+                UPDATE arrival_predictions SET current_node_id=?,current_stop_text=?,next_stop_text=?,distance_meters=?,within_100m=?,
+                  distance_from_current_stop_meters=?,arrival_direction=? WHERE prediction_id=?
+                """,stop.get("currentNodeId"),stop.get("currentName"),stop.get("nextName"),roundedDistance,within100m,
+                roundedDistanceFromCurrentStop,position.get("direction"),observationId);
+            return;
+        }
+        var arguments=new java.util.ArrayList<Object>(java.util.Arrays.asList(
+                vehicleNumber,position.get("routeId"),stop.get("currentNodeId"),stop.get("nextNodeId"),
+                stop.get("currentName"),stop.get("nextName"),roundedDistance,within100m,
+                roundedDistanceFromCurrentStop,queriedAt==null?null:Timestamp.from(queriedAt),
+                arrivalAt==null?null:Timestamp.from(arrivalAt),position.get("direction")));
         jdbcTemplate.update("""
                 INSERT INTO arrival_predictions (
                     vehicle_number,
@@ -202,24 +230,12 @@ public class ArrivalService {
                     distance_from_current_stop_meters,
                     eta_queried_at,
                     estimated_arrival_at,
-                    arrival_direction
+                    arrival_direction%s
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP,
-                        NULL, ?, ?, ?, ?)
-                """,
-                vehicleNumber,
-                position.get("routeId"),
-                stop.get("currentNodeId"),
-                stop.get("nextNodeId"),
-                stop.get("currentName"),
-                stop.get("nextName"),
-                roundedDistance,
-                within100m,
-                roundedDistanceFromCurrentStop,
-                queriedAt == null ? null : Timestamp.from(queriedAt),
-                arrivalAt == null ? null : Timestamp.from(arrivalAt),
-                position.get("direction")
-        );
+                        NULL, ?, ?, ?, ?%s)
+                """.formatted(observation==null?"":",requested_at,arrprevstationcnt,visit_id,retry_count,is_final,interpolated",
+                    observation==null?"":",?,?,?,?,?,?"),arguments.toArray());
     }
 
     private static Instant instant(Timestamp value) { return value==null?null:value.toInstant(); }

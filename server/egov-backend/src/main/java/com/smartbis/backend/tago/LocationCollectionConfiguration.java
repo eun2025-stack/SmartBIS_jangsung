@@ -28,10 +28,12 @@ public class LocationCollectionConfiguration {
     }
     @Bean
     @ConditionalOnProperty(prefix = "tago.location.operations", name = "enabled", havingValue = "true")
-    TagoLocationExecution tagoLocationExecution(LocationCollectionProperties settings, JdbcTemplate jdbc, DataSource dataSource) {
+    TagoLocationExecution tagoLocationExecution(LocationCollectionProperties settings, JdbcTemplate jdbc, DataSource dataSource,
+            org.springframework.beans.factory.ObjectProvider<CollectionDeadline> deadlines) {
         Clock clock = Clock.system(ZoneId.of(settings.getZone()));
-        return new TagoLocationExecution(settings, new TagoQuotaGuard(settings, new JdbcGuardUsageStore(jdbc), clock),
+        var execution=new TagoLocationExecution(settings, new TagoQuotaGuard(settings, new JdbcGuardUsageStore(jdbc), clock),
                 new LocationCollectorLock(dataSource), Thread::sleep, new JdbcRouteCallPlanStore(jdbc)::failure);
+        execution.setDeadline(deadlines.getIfAvailable(CollectionDeadline::unlimited));return execution;
     }
     @Bean
     @ConditionalOnProperty(prefix = "tago.location.operations", name = "enabled", havingValue = "true")

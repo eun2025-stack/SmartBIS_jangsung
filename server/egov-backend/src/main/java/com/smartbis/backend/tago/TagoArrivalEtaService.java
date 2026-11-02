@@ -62,6 +62,11 @@ public class TagoArrivalEtaService {
     @Value("${tago.arrival.stop-step:2}") private int stopStep=2;
     @Value("${budget.retry_max:2}") private int retryMax=2;
     @Value("${budget.retry_gap_sec:10}") private long retryGapSeconds=10;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private CollectionDeadline deadline=CollectionDeadline.unlimited();
+    @Value("${collection.capture-metadata:false}") private boolean captureMetadata;
+    record AttemptTrace(Instant requested,Integer remaining,int retries) {}
+    private final ThreadLocal<AttemptTrace> attemptTrace=new ThreadLocal<>();
     private ArrivalApiBudget budget;
     private PositionSnapshots snapshots=new PositionSnapshots();
     private com.smartbis.backend.arrival.ArrivalTravelEstimator travel;
@@ -141,6 +146,7 @@ public class TagoArrivalEtaService {
             initialDelay = 20000, scheduler="arrivalScheduler"
     )
     public void pollNextAssignedArrival() {
+        if(!deadline.open()) { lastBatchResult="COLLECTION_ENDED";return; }
         if (!enabled || mockMode || serviceKey.isBlank() || cityCode.isBlank()) {
             lastBatchResult = mockMode ? "MOCK_MODE" : "DISABLED";
             return;
@@ -150,6 +156,8 @@ public class TagoArrivalEtaService {
         }
 
         try {
+            visits.setMetadataEnabled(captureMetadata);
+            attemptTrace.remove();
             List<ArrivalTarget> targets = loadAssignedArrivalTargets();
             lastBatchTargetCount = targets.size();
 
@@ -210,7 +218,13 @@ public class TagoArrivalEtaService {
                 if(arrival==null) arrival=queried.plusSeconds(travel.estimateSeconds(assigned.routeId(),assigned.currentOrder(),assigned.nodeOrder(),now));
                 if(!observationMode) continue;
                 try {
-                    predictions.collectPrediction(assigned.vehicleNumber(),target.routeId(),target.stopId(),queried,arrival);
+                    var trace=attemptTrace.get();
+                    var reservation=reservations.get(assigned);
+                    if(captureMetadata && reservation!=null && trace!=null) {
+                        if(reservation.id()==null) throw new IllegalStateException("ARRIVAL_VISIT_ID_REQUIRED");
+                        predictions.collectPrediction(assigned.vehicleNumber(),target.routeId(),target.stopId(),queried,arrival,
+                            new ArrivalService.Observation(trace.requested(),trace.remaining(),reservation.id(),trace.retries(),true,false,failureReason));
+                    } else predictions.collectPrediction(assigned.vehicleNumber(),target.routeId(),target.stopId(),queried,arrival);
                 } catch (org.springframework.web.server.ResponseStatusException unavailable) {
                     if (unavailable.getStatusCode().value()!=404) throw unavailable;
                     log.info("Arrival geometry unavailable: vehicle={}",assigned.vehicleNumber());
@@ -289,12 +303,21 @@ public class TagoArrivalEtaService {
                 .build().encode().toUri();
         HttpRequest request = HttpRequest.newBuilder(uri).timeout(REQUEST_TIMEOUT)
                 .header("Accept", "application/xml").GET().build();
-        if(budget==null) budget=new ArrivalApiBudget(enabled&&!mockMode,dailyLimit,new JdbcGuardUsageStore(jdbc),clock,
+        if(budget==null) {
+            budget=new ArrivalApiBudget(enabled&&!mockMode,dailyLimit,new JdbcGuardUsageStore(jdbc),clock,
                 retryMax,Math.multiplyExact(retryGapSeconds,1000),Thread::sleep);
+            budget.setDeadline(deadline);
+        }
+        var attempts=new java.util.concurrent.atomic.AtomicInteger();
         return budget.execute(()->{
+            Instant requested=clock.instant();
+            int retries=attempts.getAndIncrement();
+            attemptTrace.set(new AttemptTrace(requested,null,retries));
             HttpResponse<byte[]> response=http.send(request,HttpResponse.BodyHandlers.ofByteArray());
             if(response.statusCode()!=200) throw new IllegalStateException("TAGO_HTTP_"+response.statusCode());
-            return earliestArrivalSeconds(response.body(),routeId,1);
+            var parsed=parseArrival(response.body(),routeId,null);
+            attemptTrace.set(new AttemptTrace(requested,parsed.remaining(),retries));
+            return parsed.seconds();
         });
     }
 
@@ -306,6 +329,10 @@ public class TagoArrivalEtaService {
         return earliestArrivalSeconds(xml,routeId,null);
     }
     static Integer earliestArrivalSeconds(byte[] xml,String routeId,Integer remainingStops) throws Exception {
+        return parseArrival(xml,routeId,remainingStops).seconds();
+    }
+    record ParsedArrival(Integer seconds,Integer remaining) {}
+    static ParsedArrival parseArrival(byte[] xml,String routeId,Integer remainingStops) throws Exception {
         Document document = parseXml(xml);
         Element root = document.getDocumentElement();
         Element header = first(root, "header");
@@ -316,6 +343,7 @@ public class TagoArrivalEtaService {
         Element body = first(root, "body");
         Element items = body == null ? null : first(body, "items");
         Integer earliestSeconds = null;
+        Integer selectedRemaining=null;
         for (Element item : children(items, "item")) {
             if (!RouteIdNormalizer.normalize(routeId).equals(RouteIdNormalizer.normalize(text(item, "routeid")))) continue;
             String remaining=text(item,"arrprevstationcnt");
@@ -323,9 +351,10 @@ public class TagoArrivalEtaService {
             int seconds = integer(text(item, "arrtime"), -1);
             if (seconds >= 0 && (earliestSeconds == null || seconds < earliestSeconds)) {
                 earliestSeconds = seconds;
+                int parsed=integer(remaining,-1);selectedRemaining=parsed<0?null:parsed;
             }
         }
-        return earliestSeconds;
+        return new ParsedArrival(earliestSeconds,selectedRemaining);
     }
 
     private String normalizedServiceKey() {

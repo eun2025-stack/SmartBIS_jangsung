@@ -16,6 +16,8 @@ final class TagoLocationExecution {
     private final LocationCollectorLock lock;
     private final Sleeper sleeper;
     private final FailureRecorder failureRecorder;
+    private CollectionDeadline deadline=CollectionDeadline.unlimited();
+    void setDeadline(CollectionDeadline deadline) { this.deadline=deadline; }
     TagoLocationExecution(LocationCollectionProperties settings, TagoQuotaGuard guard,
                           LocationCollectorLock lock, Sleeper sleeper) {
         this(settings, guard, lock, sleeper, (route, reason) -> {});
@@ -38,6 +40,7 @@ final class TagoLocationExecution {
     boolean readyLane(RouteCallSchedule.Role lane,long gapMs) { return guard.ready(lane.name(),gapMs); }
     private final java.util.Map<RouteCallSchedule.Role,Object> laneLocks=new java.util.concurrent.ConcurrentHashMap<>();
     boolean locationTimeAllowed() {
+        if(!deadline.open()) return false;
         var time=guard.now().atZone(java.time.ZoneId.of(settings.getZone())).toLocalTime();
         boolean allowed=!time.isBefore(java.time.LocalTime.of(5,15))&&time.isBefore(java.time.LocalTime.of(21,15));
         if(!allowed) log.info("Location call blocked: outside fixed 05:15-21:15 window");
@@ -46,6 +49,7 @@ final class TagoLocationExecution {
     <T> T executeLane(String route,RouteCallSchedule.Role lane,long gapMs,Call<T> call) throws Exception {
         synchronized(laneLocks.computeIfAbsent(lane,key->new Object())) {
             for(int attempt=0;;attempt++) {
+                deadline.requireOpen();
                 if(!locationTimeAllowed()) throw new IllegalStateException("LOCATION_GUARD_NIGHT");
                 lock.ensureHeld();
                 var decision=guard.acquire(lane.name(),gapMs);
@@ -68,6 +72,7 @@ final class TagoLocationExecution {
     synchronized <T> T execute(String route, Call<T> call) throws Exception {
         settings.validate();
         for (int attempt = 0; ; attempt++) {
+            deadline.requireOpen();
             lock.ensureHeld();
             var decision = guard.acquire();
             if (decision != TagoQuotaGuard.Decision.ALLOWED) {

@@ -71,6 +71,9 @@ public class TagoVehicleLocationService {
     private PositionSnapshots snapshots=new PositionSnapshots();
     private record LaneCall(String route,RouteCallSchedule.Role lane,long gapMs) {}
     private final ThreadLocal<LaneCall> laneCall=new ThreadLocal<>();
+    record PositionTrace(java.util.UUID id,java.time.Instant requested,java.time.Instant responded,String lane) {}
+    private final ThreadLocal<PositionTrace> positionTrace=new ThreadLocal<>();
+    @org.springframework.beans.factory.annotation.Value("${collection.capture-metadata:false}") private boolean captureMetadata;
     @Autowired(required=false)
     void setSnapshots(PositionSnapshots value) { snapshots=value; }
 
@@ -373,7 +376,12 @@ public class TagoVehicleLocationService {
         return sendDirectRequest(request);
     }
     private HttpResponse<byte[]> sendDirectRequest(HttpRequest request) throws Exception {
+        java.time.Instant requested=java.time.Instant.now();
+        java.util.UUID id=java.util.UUID.randomUUID();
         HttpResponse<byte[]> response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        var lane=laneCall.get();
+        String kind=lane==null?"C":switch(lane.lane()) { case HUNDRED->"A";case LOCAL_WINDOW->"B";case BACKUP->"C"; };
+        positionTrace.set(new PositionTrace(id,requested,java.time.Instant.now(),kind));
         if (response.statusCode() == 429) {
             throw new IllegalStateException("TAGO_HTTP_429");
         }
@@ -431,18 +439,30 @@ public class TagoVehicleLocationService {
         return new VehiclePosition(text(item, "vehicleno"), routeId, text(item, "nodeid"), nodeOrder,
                 Double.isFinite(latitude) && latitude >= -90 && latitude <= 90 ? latitude : null,
                 Double.isFinite(longitude) && longitude >= -180 && longitude <= 180 ? longitude : null,
-                null, JSON.writeValueAsString(raw));
+                null, JSON.writeValueAsString(raw),positionTrace.get());
     }
 
     private boolean persist(VehiclePosition position) {
         if(!observationMode) return false;
+        if(!captureMetadata) {
+            jdbc.update("""
+                INSERT INTO bus_positions(vehicle_number,route_id,node_id,node_order,latitude,longitude,observed_at,source,raw_payload)
+                VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP,'TAGO_OBSERVATION',CAST(? AS jsonb))
+                """,position.vehicleNumber(),position.routeId(),position.nodeId(),position.nodeOrder(),position.latitude(),position.longitude(),position.rawPayload());
+            return true;
+        }
+        if(position.trace()==null) throw new IllegalStateException("POSITION_CALL_METADATA_REQUIRED");
         // Keep raw updowncd/nodeord without assignment or direction filtering.
         jdbc.update("""
                 INSERT INTO bus_positions(vehicle_number, route_id, node_id, node_order,
-                                          latitude, longitude, observed_at, source, raw_payload)
-                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'TAGO_OBSERVATION', CAST(? AS jsonb))
+                                          latitude, longitude, observed_at, source, raw_payload,
+                                          requested_at,responded_at,call_id,call_lane)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'TAGO_OBSERVATION', CAST(? AS jsonb),?,?,?,?)
                 """, position.vehicleNumber(), position.routeId(), position.nodeId(), position.nodeOrder(),
-                position.latitude(), position.longitude(), position.rawPayload());
+                position.latitude(), position.longitude(), position.rawPayload(),
+                position.trace()==null?null:java.sql.Timestamp.from(position.trace().requested()),
+                position.trace()==null?null:java.sql.Timestamp.from(position.trace().responded()),
+                position.trace()==null?null:position.trace().id(),position.trace()==null?null:position.trace().lane());
         return true;
     }
 
@@ -490,5 +510,9 @@ public class TagoVehicleLocationService {
     private static String safeCode(String code) { return code.matches("[A-Za-z0-9_-]{1,30}") ? code : "INVALID"; }
 
     record VehiclePosition(String vehicleNumber, String routeId, String nodeId, Integer nodeOrder,
-                           Double latitude, Double longitude, String direction, String rawPayload) { }
+                           Double latitude, Double longitude, String direction, String rawPayload,PositionTrace trace) {
+        VehiclePosition(String vehicleNumber,String routeId,String nodeId,Integer nodeOrder,Double latitude,Double longitude,String direction,String rawPayload) {
+            this(vehicleNumber,routeId,nodeId,nodeOrder,latitude,longitude,direction,rawPayload,null);
+        }
+    }
 }
