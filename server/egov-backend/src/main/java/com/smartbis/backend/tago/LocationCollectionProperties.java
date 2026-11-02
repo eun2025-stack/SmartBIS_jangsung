@@ -30,6 +30,9 @@ public class LocationCollectionProperties {
     private int windowEndPaddingMinutes = 10;
     private double defaultMinutesPerStop = 1.2;
     private int defaultOneWayMinutes = 60;
+    private int closeAfterLastMinutes = 5;
+    private int noObservationMaxMinutes = 60;
+    private java.util.Set<java.time.LocalDate> holidays = new java.util.HashSet<>();
     private final List<String> variantRouteIds = new ArrayList<>();
     private final Group local = new Group();
     private final Group hundred = new Group();
@@ -40,7 +43,8 @@ public class LocationCollectionProperties {
                 || laneAIntervalSeconds < 1 || laneCIntervalSeconds < 1 || laneCInterRouteDelaySeconds < 1
                 || laneC429DelayStep2Seconds < laneCInterRouteDelaySeconds || laneC429DelayStep3Seconds < laneC429DelayStep2Seconds
                 || localLeadMinutes < 0 || variantLeadMinutes < 0 || windowEndPaddingMinutes < 0
-                || defaultMinutesPerStop <= 0 || defaultOneWayMinutes < 1) {
+                || defaultMinutesPerStop <= 0 || defaultOneWayMinutes < 1
+                || closeAfterLastMinutes < 0 || noObservationMaxMinutes < 1) {
             throw new IllegalArgumentException("Invalid location guard budget/retry/interval settings");
         }
         ZoneId.of(zone);
@@ -98,6 +102,12 @@ public class LocationCollectionProperties {
     public void setVariantRouteIds(List<String> value) { variantRouteIds.clear(); if (value != null) variantRouteIds.addAll(value); }
     public Group getLocal() { return local; }
     public Group getHundred() { return hundred; }
+    public int getCloseAfterLastMinutes() { return closeAfterLastMinutes; }
+    public void setCloseAfterLastMinutes(int value) { closeAfterLastMinutes=value; }
+    public int getNoObservationMaxMinutes() { return noObservationMaxMinutes; }
+    public void setNoObservationMaxMinutes(int value) { noObservationMaxMinutes=value; }
+    public java.util.Set<java.time.LocalDate> getHolidays() { return java.util.Set.copyOf(holidays); }
+    public void setHolidays(java.util.Set<java.time.LocalDate> value) { holidays=new java.util.HashSet<>(value); }
 
     public static class Group {
         private boolean enabled = false;

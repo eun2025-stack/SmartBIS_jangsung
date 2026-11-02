@@ -32,9 +32,23 @@ class JdbcRouteCallPlanStore {
                 var service = start == null || end == null ? null : new RouteCallSchedule.Window(start, end, rs.getInt("interval_seconds"));
                 var backup = new RouteCallSchedule.Window(rs.getInt("backup_start_seconds"), rs.getInt("backup_end_seconds"), rs.getInt("backup_interval_seconds"));
                 var last = rs.getTimestamp("last_attempt_at");
-                return new RouteCallSchedule.Plan(rs.getString("route_id"), rs.getString("route_group"), rs.getBoolean("enabled"),
+                return new RouteCallSchedule.Plan(RouteIdNormalizer.normalize(rs.getString("route_id")), rs.getString("route_group"), rs.getBoolean("enabled"),
                     windows, service, backup, last == null ? null : last.toInstant());
             });
+    }
+    Instant firstTerminal(String route,Instant start,Instant end) {
+        return jdbc.query("""
+            SELECT MIN(p.observed_at) FROM bus_positions p
+            WHERE p.route_id=? AND p.observed_at>=? AND p.observed_at<?
+              AND p.node_order=(SELECT MAX(node_order) FROM bus_route_stops WHERE route_id=?)
+              AND p.source IN ('TAGO','TAGO_OBSERVATION')
+              AND COALESCE(p.raw_payload->>'interpolated','false') NOT IN ('true','1')
+            """,rs->!rs.next()||rs.getTimestamp(1)==null?null:rs.getTimestamp(1).toInstant(),
+            route,Timestamp.from(start),Timestamp.from(end),route);
+    }
+    boolean isTerminal(String route,int order) {
+        Integer last=jdbc.queryForObject("SELECT MAX(node_order) FROM bus_route_stops WHERE route_id=?",Integer.class,route);
+        return last!=null && last==order;
     }
     boolean claim(RouteCallSchedule.Slot slot, Instant now) {
         return jdbc.update("""

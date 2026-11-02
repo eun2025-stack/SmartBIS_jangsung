@@ -15,59 +15,76 @@ final class TagoQuotaGuard {
     private final LocationCollectionProperties settings;
     private final GuardUsageStore store;
     private final Clock clock;
+    private final String apiName;
+    private final java.util.Map<String,Instant> laneLastAllowed=new java.util.HashMap<>();
     private LocalDate day;
     private Instant lastAllowed;
     private int callCount;
     private boolean blockedLogged;
 
     TagoQuotaGuard(LocationCollectionProperties settings, GuardUsageStore store, Clock clock) {
+        this(settings,store,clock,API_NAME);
+    }
+    TagoQuotaGuard(LocationCollectionProperties settings, GuardUsageStore store, Clock clock,String apiName) {
         this.settings = settings; this.store = store; this.clock = clock;
+        this.apiName=apiName;
     }
     synchronized void initialize() {
         if (settings.isEnabled()) loadToday();
     }
     private void loadToday() {
         day = LocalDate.now(clock.withZone(ZoneId.of(settings.getZone())));
-        callCount = store.read(API_NAME, day);
+        callCount = store.read(apiName, day);
+        laneLastAllowed.clear();
         blockedLogged = false;
-        log.info("Location guard resumed: date={} callCount={} dailyLimit={}", day, callCount, settings.getDailyLimit());
+        log.info("API guard resumed: api={} date={} callCount={} dailyLimit={}", apiName, day, callCount, settings.getDailyLimit());
     }
     synchronized boolean ready() {
+        return ready("legacy",settings.getMinGapMs());
+    }
+    synchronized boolean ready(String lane,long gapMs) {
         if (!settings.isEnabled()) return false;
         settings.validate();
         LocalDate today = LocalDate.now(clock.withZone(ZoneId.of(settings.getZone())));
         if (!today.equals(day)) loadToday();
         if (callCount >= settings.getDailyLimit()) {
             if (!blockedLogged) {
-                log.warn("Location API daily budget reached; stopped until next KST day: date={} callCount={} limit={}", day, callCount, settings.getDailyLimit());
+                log.warn("API daily budget reached: api={} date={} callCount={} limit={}", apiName, day, callCount, settings.getDailyLimit());
                 blockedLogged = true;
             }
             return false;
         }
-        return lastAllowed == null || !clock.instant().isBefore(lastAllowed.plusMillis(settings.getMinGapMs()));
+        Instant last=laneLastAllowed.get(lane);
+        return last==null || !clock.instant().isBefore(last.plusMillis(gapMs));
     }
     synchronized Decision acquire() {
+        return acquire("legacy",settings.getMinGapMs());
+    }
+    synchronized Decision acquire(String lane,long gapMs) {
         if (!settings.isEnabled()) return Decision.DISABLED;
         settings.validate();
         LocalDate today = LocalDate.now(clock.withZone(ZoneId.of(settings.getZone())));
         if (!today.equals(day)) loadToday();
         Instant now = clock.instant();
-        if (callCount < settings.getDailyLimit() && lastAllowed != null
-                && now.isBefore(lastAllowed.plusMillis(settings.getMinGapMs()))) return Decision.TOO_SOON;
+        Instant last=laneLastAllowed.get(lane);
+        if (callCount < settings.getDailyLimit() && last != null
+                && now.isBefore(last.plusMillis(gapMs))) return Decision.TOO_SOON;
         // Do not trust memory for budget admission: persistence must succeed before HTTP is attempted.
-        int count = store.reserve(API_NAME, day, settings.getDailyLimit(), now);
+        int count = store.reserve(apiName, day, settings.getDailyLimit(), now);
         if (count < 0) {
-            callCount = store.read(API_NAME, day);
+            callCount = store.read(apiName, day);
             if (!blockedLogged) {
-                log.warn("Location API daily budget reached; stopped until next KST day: date={} callCount={} limit={}",
-                        day, callCount, settings.getDailyLimit());
+                log.warn("API daily budget reached: api={} date={} callCount={} limit={}",
+                        apiName, day, callCount, settings.getDailyLimit());
                 blockedLogged = true;
             }
             return Decision.DAILY_LIMIT;
         }
         callCount = count;
         lastAllowed = now;
+        laneLastAllowed.put(lane,now);
         return Decision.ALLOWED;
     }
     synchronized int callCount() { return callCount; }
+    Instant now() { return clock.instant(); }
 }

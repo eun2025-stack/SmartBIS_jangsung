@@ -8,11 +8,11 @@ import org.junit.jupiter.api.Test;
 
 class LocationLaneScheduleTest {
     @Test void t1WindowIncludesOneCallAndExcludesOutside() {
-        var window = LocationLaneSchedule.window(7 * 3600 + 15 * 60, 60, 15, 10, 600);
+        var window = LocationLaneSchedule.window(7 * 3600 + 15 * 60, 15, 60, 600);
         assertTrue(window.start() <= 7 * 3600);
         assertTrue(window.end() > 7 * 3600 + 15 * 60);
         assertFalse(window.start() > 7 * 3600);
-        assertEquals(8 * 3600 + 25 * 60, window.end());
+        assertEquals(8 * 3600, window.end());
     }
 
     @Test void t2NightWindowHasNoLocationCalls() {
@@ -22,10 +22,10 @@ class LocationLaneScheduleTest {
     }
 
     @Test void t3OverlappingWindowsMerge() {
-        var merged = LocationLaneSchedule.merge(List.of(
-                new LocationLaneSchedule.DepartureWindow(100, 300, 600),
-                new LocationLaneSchedule.DepartureWindow(250, 500, 600)));
-        assertEquals(List.of(new LocationLaneSchedule.DepartureWindow(100, 500, 600)), merged);
+        var first=LocationLaneSchedule.window(7*3600+15*60,15,60,600);
+        var second=LocationLaneSchedule.window(7*3600+45*60,15,60,600);
+        var merged=LocationLaneSchedule.merge(List.of(first,second));
+        assertEquals(List.of(new LocationLaneSchedule.DepartureWindow(7*3600,8*3600+30*60,600)),merged);
     }
 
     @Test void t4LaneCProducesSequentialRoundWithTwoSecondSpacing() {
@@ -43,18 +43,16 @@ class LocationLaneScheduleTest {
     }
 
     @Test void t6VariantDepartureUsesTenMinuteLead() {
-        var window118 = LocationLaneSchedule.window(7 * 3600 + 15 * 60, 60, 10, 10, 600);
-        var window153 = LocationLaneSchedule.window(6 * 3600 + 45 * 60, 60, 10, 10, 600);
+        var window118 = LocationLaneSchedule.window(7 * 3600 + 15 * 60, 10, 60, 600);
+        var window153 = LocationLaneSchedule.window(6 * 3600 + 45 * 60, 10, 60, 600);
         assertEquals(7 * 3600 + 5 * 60, window118.start());
         assertEquals(6 * 3600 + 35 * 60, window153.start());
     }
 
     @Test void t7LaneAIdsAreNotAutomaticallyLaneBIds() {
-        var settings = new LocationCollectionProperties();
-        settings.getHundred().setRouteIds(List.of("R102", "R103"));
-        settings.setVariantRouteIds(List.of());
-        assertFalse(settings.getVariantRouteIds().contains("R102"));
-        assertFalse(settings.getVariantRouteIds().contains("R103"));
+        var data=RouteTimetable.DEFAULT;
+        assertEquals(java.util.Set.of("TSB342000102","TSB342000103","TSB342000155"),data.laneA());
+        assertTrue(java.util.Collections.disjoint(data.laneA(),data.laneB()));
     }
 
     @Test void emptyLaneAConfigurationProducesNoLaneACalls() {

@@ -68,6 +68,11 @@ public class TagoVehicleLocationService {
     private int nextRouteIndex;
     private TagoLocationExecution operationalExecution;
     private RouteCallPlanScheduler operationalScheduler;
+    private PositionSnapshots snapshots=new PositionSnapshots();
+    private record LaneCall(String route,RouteCallSchedule.Role lane,long gapMs) {}
+    private final ThreadLocal<LaneCall> laneCall=new ThreadLocal<>();
+    @Autowired(required=false)
+    void setSnapshots(PositionSnapshots value) { snapshots=value; }
 
     @Autowired(required = false)
     void setOperationalExecution(TagoLocationExecution execution) {
@@ -123,6 +128,39 @@ public class TagoVehicleLocationService {
             lastResult = mockMode ? "MOCK_MODE" : "DISABLED";
             return;
         }
+        // Legacy 105-route / 10-second polling is no longer a runtime collection path.
+        if(operationalScheduler!=null) return;
+        lastResult="NO_ENABLED_LANE_SCHEDULER";
+        return;
+    }
+
+    @Scheduled(fixedDelay=1000,initialDelay=15000,scheduler="laneAScheduler")
+    public void pollLaneA() { pollLane(RouteCallSchedule.Role.HUNDRED); }
+    @Scheduled(fixedDelay=1000,initialDelay=15000,scheduler="laneBScheduler")
+    public void pollLaneB() { pollLane(RouteCallSchedule.Role.LOCAL_WINDOW); }
+    @Scheduled(fixedDelay=1000,initialDelay=15000,scheduler="laneCScheduler")
+    public void pollLaneC() { pollLane(RouteCallSchedule.Role.BACKUP); }
+    void pollLane(RouteCallSchedule.Role lane) {
+        if(!enabled||mockMode||operationalExecution==null||operationalScheduler==null) return;
+        if(!operationalExecution.locationTimeAllowed()) return;
+        long gap=operationalScheduler.gapMillis(lane);
+        if(!operationalExecution.readyLane(lane,gap)) return;
+        if(serviceKey.isBlank()||cityCode.isBlank()) { lastResult="MISSING_CREDENTIALS"; return; }
+        try {
+            var route=operationalScheduler.next(lane);
+            if(route.isEmpty()) return;
+            laneCall.set(new LaneCall(route.get(),lane,gap));
+            lastPolledRouteId=route.get();
+            int saved=pollRoute(route.get());
+            lastSavedCount=Math.max(0,saved);lastCompletedAt=OffsetDateTime.now();
+            lastResult=saved>=0?"UP":"DEGRADED";lastRouteCount=RouteTimetable.DEFAULT.all().size();
+            lastSucceededRouteCount=saved>=0?1:0;lastFailedRouteCount=saved<0?1:0;
+            if(saved>=0 && lane==RouteCallSchedule.Role.BACKUP) operationalScheduler.laneCSucceeded(route.get());
+        } finally { laneCall.remove(); }
+    }
+
+    /** Kept as a direct legacy API; not registered as a scheduled collector. */
+    void pollLegacyDirect() {
         if (System.currentTimeMillis() < nextAllowedPollAtMillis) {
             lastResult = "RETRY_BACKOFF";
             return;
@@ -257,10 +295,11 @@ public class TagoVehicleLocationService {
         try {
             int saved = 0;
             for (VehiclePosition position : fetchRoutePositions(routeId)) {
-                persist(position);
-                saved++;
-                // Keep the location-ingest job limited to route-position calls. ETA is fetched
-                // separately on demand by the arrival endpoint and cached by route + next stop.
+                snapshots.observe(new PositionSnapshots.Position(position.vehicleNumber(),position.routeId(),position.nodeId(),position.nodeOrder(),
+                    position.latitude(),position.longitude(),java.time.Instant.now()),false);
+                if(operationalScheduler!=null) operationalScheduler.observed(position.routeId(),position.nodeOrder(),java.time.Instant.now());
+                if(persist(position)) saved++;
+                // Arrival collection runs separately; the app endpoint only reads saved values.
             }
             return saved;
         } catch (Exception e) {
@@ -273,13 +312,17 @@ public class TagoVehicleLocationService {
             lastFailureReason = reason;
             long backoff = "TAGO_HTTP_429".equals(reason)
                     ? RATE_LIMIT_COOLDOWN_MILLIS : Duration.ofMinutes(2).toMillis();
-            if ("TAGO_HTTP_429".equals(reason) && operationalScheduler != null) operationalScheduler.laneCRateLimited();
-            nextAllowedPollAtMillis = System.currentTimeMillis() + backoff;
+            if ("TAGO_HTTP_429".equals(reason) && operationalScheduler != null
+                    && laneCall.get() != null && laneCall.get().lane() == RouteCallSchedule.Role.BACKUP) {
+                operationalScheduler.laneCRateLimited();
+            }
+            if(laneCall.get()==null) nextAllowedPollAtMillis = System.currentTimeMillis() + backoff;
             return -2;
         }
     }
 
     private List<VehiclePosition> fetchRoutePositions(String routeId) throws Exception {
+        routeId=RouteIdNormalizer.normalize(routeId);
         List<VehiclePosition> results = new ArrayList<>();
         int page = 1;
         int totalCount;
@@ -316,6 +359,8 @@ public class TagoVehicleLocationService {
     }
 
     private HttpResponse<byte[]> sendRateLimitedRequest(HttpRequest request) throws Exception {
+        var lane=laneCall.get();
+        if(lane!=null) return operationalExecution.executeLane(lane.route(),lane.lane(),lane.gapMs(),()->sendDirectRequest(request));
         if (operationalExecution != null) {
             // Only the quota guard controls the operational gap, not the legacy shared throttle.
             return operationalExecution.execute(lastPolledRouteId, () -> sendDirectRequest(request));
@@ -390,36 +435,14 @@ public class TagoVehicleLocationService {
     }
 
     private boolean persist(VehiclePosition position) {
-        if (observationMode) {
-            // Raw updowncd/nodeord are retained even when normal direction/GPS validation fails.
-            // No vehicle/stop FK lookup or vehicle-assignment update is needed for observations.
-            jdbc.update("""
-                    INSERT INTO bus_positions(vehicle_number, route_id, node_id, node_order,
-                                              latitude, longitude, observed_at, source, raw_payload)
-                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'TAGO_OBSERVATION', CAST(? AS jsonb))
-                    """, position.vehicleNumber(), position.routeId(), position.nodeId(), position.nodeOrder(),
-                    position.latitude(), position.longitude(), position.rawPayload());
-            return true;
-        }
-        Long vehicleId = jdbc.queryForObject("""
-                INSERT INTO bus_vehicles(vehicle_number, city_code, route_id, active,
-                                         last_seen_at, created_at, updated_at)
-                VALUES (?, ?, ?, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                ON CONFLICT (vehicle_number) DO UPDATE SET
-                    city_code = EXCLUDED.city_code,
-                    route_id = EXCLUDED.route_id,
-                    active = true,
-                    last_seen_at = CURRENT_TIMESTAMP,
-                    updated_at = CURRENT_TIMESTAMP
-                RETURNING vehicle_id
-                """, Long.class, position.vehicleNumber(), cityCode, position.routeId());
+        if(!observationMode) return false;
+        // Keep raw updowncd/nodeord without assignment or direction filtering.
         jdbc.update("""
-                INSERT INTO bus_positions(vehicle_id, vehicle_number, route_id, direction,
-                                          node_id, node_order, latitude, longitude,
-                                          observed_at, source)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'TAGO')
-                """, vehicleId, position.vehicleNumber(), position.routeId(), position.direction(),
-                position.nodeId(), position.nodeOrder(), position.latitude(), position.longitude());
+                INSERT INTO bus_positions(vehicle_number, route_id, node_id, node_order,
+                                          latitude, longitude, observed_at, source, raw_payload)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'TAGO_OBSERVATION', CAST(? AS jsonb))
+                """, position.vehicleNumber(), position.routeId(), position.nodeId(), position.nodeOrder(),
+                position.latitude(), position.longitude(), position.rawPayload());
         return true;
     }
 

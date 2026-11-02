@@ -14,6 +14,18 @@ import org.springframework.jdbc.core.JdbcTemplate;
 @PropertySource({"classpath:tago-location-route-groups.properties", "classpath:tago-location-operations.properties"})
 @EnableConfigurationProperties(LocationCollectionProperties.class)
 public class LocationCollectionConfiguration {
+    @Bean(name="laneAScheduler")
+    org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler laneAScheduler() { return laneScheduler("location-A-"); }
+    @Bean(name="laneBScheduler")
+    org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler laneBScheduler() { return laneScheduler("location-B-"); }
+    @Bean(name="laneCScheduler")
+    org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler laneCScheduler() { return laneScheduler("location-C-"); }
+    @Bean(name="arrivalScheduler")
+    org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler arrivalScheduler() { return laneScheduler("arrival-"); }
+    private org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler laneScheduler(String prefix) {
+        var scheduler=new org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(1);scheduler.setThreadNamePrefix(prefix);return scheduler;
+    }
     @Bean
     @ConditionalOnProperty(prefix = "tago.location.operations", name = "enabled", havingValue = "true")
     TagoLocationExecution tagoLocationExecution(LocationCollectionProperties settings, JdbcTemplate jdbc, DataSource dataSource) {

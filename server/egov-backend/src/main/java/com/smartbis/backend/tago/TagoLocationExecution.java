@@ -35,6 +35,32 @@ final class TagoLocationExecution {
     @PreDestroy
     void stop() throws Exception { lock.close(); }
     boolean ready() { return guard.ready(); }
+    boolean readyLane(RouteCallSchedule.Role lane,long gapMs) { return guard.ready(lane.name(),gapMs); }
+    private final java.util.Map<RouteCallSchedule.Role,Object> laneLocks=new java.util.concurrent.ConcurrentHashMap<>();
+    boolean locationTimeAllowed() {
+        var time=guard.now().atZone(java.time.ZoneId.of(settings.getZone())).toLocalTime();
+        boolean allowed=!time.isBefore(java.time.LocalTime.of(5,15))&&time.isBefore(java.time.LocalTime.of(21,15));
+        if(!allowed) log.info("Location call blocked: outside fixed 05:15-21:15 window");
+        return allowed;
+    }
+    <T> T executeLane(String route,RouteCallSchedule.Role lane,long gapMs,Call<T> call) throws Exception {
+        synchronized(laneLocks.computeIfAbsent(lane,key->new Object())) {
+            for(int attempt=0;;attempt++) {
+                if(!locationTimeAllowed()) throw new IllegalStateException("LOCATION_GUARD_NIGHT");
+                lock.ensureHeld();
+                var decision=guard.acquire(lane.name(),gapMs);
+                if(decision!=TagoQuotaGuard.Decision.ALLOWED) throw new IllegalStateException("LOCATION_GUARD_"+decision);
+                try { return call.run(); }
+                catch(InterruptedException e) { Thread.currentThread().interrupt();throw e; }
+                catch(Exception e) {
+                    String reason=failureReason(e);failureRecorder.record(route,reason);
+                    log.warn("Location attempt failed: lane={} routeId={} attempt={} failureReason={}",lane,route,attempt+1,reason);
+                    if(attempt>=settings.getMaxRetries() || "TAGO_HTTP_429".equals(reason)) throw e;
+                    sleeper.sleep(Math.max(settings.getRetryDelayMs(),gapMs));
+                }
+            }
+        }
+    }
 
     synchronized <T> T execute(Call<T> call) throws Exception {
         return execute("", call);

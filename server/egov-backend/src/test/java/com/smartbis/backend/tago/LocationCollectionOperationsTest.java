@@ -79,8 +79,8 @@ class LocationCollectionOperationsTest {
                 var props = context.getBean(LocationCollectionProperties.class);
                 assertFalse(props.isEnabled());
                 assertEquals(9500,props.getDailyLimit());
-                assertEquals(88,props.getLocal().getRouteIds().size());
-                assertEquals(17,props.getHundred().getRouteIds().size());
+                assertEquals(86,props.getLocal().getRouteIds().size());
+                assertEquals(3,props.getHundred().getRouteIds().size());
                 verify(jdbc).afterPropertiesSet();
                 verifyNoMoreInteractions(jdbc);
                 verifyNoInteractions(ds);

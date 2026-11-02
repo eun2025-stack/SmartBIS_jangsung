@@ -731,7 +731,7 @@ public class TagoCatalogService {
     }
 
     static Route routeFrom(Element item) {
-        String id = childText(item, "routeid");
+        String id = RouteIdNormalizer.normalize(childText(item, "routeid"));
         if (id.isBlank()) throw new IllegalArgumentException("TAGO route has no routeid");
         String name = childText(item, "routeno");
         if (name.isBlank()) name = id;
@@ -739,11 +739,12 @@ public class TagoCatalogService {
     }
 
     static RouteDetail routeDetailFrom(Element item) {
-        return new RouteDetail(childText(item, "routeid"), childText(item, "routeno"),
+        return new RouteDetail(RouteIdNormalizer.normalize(childText(item, "routeid")), childText(item, "routeno"),
                 childText(item, "startnodenm"), childText(item, "endnodenm"));
     }
 
     static RouteStop stopFrom(Element item, String routeId, int responseSequence) {
+        routeId=RouteIdNormalizer.normalize(routeId);
         String id = childText(item, "nodeid");
         String name = childText(item, "nodenm");
         if (id.isBlank()) throw new CatalogValidationException("STOP_ID_MISSING");

@@ -12,11 +12,16 @@ final class LocationLaneSchedule {
 
     private LocationLaneSchedule() { }
 
-    static DepartureWindow window(int departureSecond, int travelMinutes, int leadMinutes, int endPaddingMinutes, int intervalSeconds) {
+    static DepartureWindow window(int departureSecond, int leadMinutes, int noObservationMaxMinutes, int intervalSeconds) {
         int start = Math.max(0, departureSecond - leadMinutes * 60);
-        int end = Math.min(86400, departureSecond + travelMinutes * 60 + endPaddingMinutes * 60);
+        int end = Math.min(86400, start + noObservationMaxMinutes * 60);
         if (start >= end) throw new IllegalArgumentException("LOCATION_PLAN_INVALID_DEPARTURE_WINDOW");
         return new DepartureWindow(start, end, intervalSeconds);
+    }
+
+    static DepartureWindow close(DepartureWindow window, Integer firstLastStopSecond, int afterMinutes) {
+        if(firstLastStopSecond==null || firstLastStopSecond<window.start() || firstLastStopSecond>=window.end()) return window;
+        return new DepartureWindow(window.start(),Math.min(86400,firstLastStopSecond+afterMinutes*60),window.intervalSeconds());
     }
 
     static List<DepartureWindow> merge(List<DepartureWindow> input) {

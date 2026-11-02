@@ -22,22 +22,51 @@ final class RouteCallSchedule {
     record Day(List<Slot> slots, Summary summary) {}
 
     static Day compileLanes(List<Plan> plans, LocalDate day, ZoneId zone, LocationCollectionProperties settings) {
-        var transformed = new ArrayList<Plan>();
+        return compileLanes(plans,day,zone,settings,(route,window)->null);
+    }
+    static Day compileLanes(List<Plan> plans, LocalDate day, ZoneId zone, LocationCollectionProperties settings,
+            java.util.function.BiFunction<String,Window,Instant> terminalObservation) {
+        var slots=new TreeMap<String,Slot>();
+        var counts=new int[Role.values().length];
+        var seen=new HashSet<String>();
+        var enabled=new ArrayList<Plan>();
+        Instant midnight=day.atStartOfDay(zone).toInstant();
         Window laneA = new Window(seconds(settings.getLaneAStart()), seconds(settings.getLaneAEnd()), settings.getLaneAIntervalSeconds());
         Window laneC = new Window(seconds(settings.getLaneCStart()), seconds(settings.getLaneCEnd()), settings.getLaneCIntervalSeconds());
         for (Plan plan : plans) {
+            if(!seen.add(RouteIdNormalizer.normalize(plan.routeId()))) throw new IllegalArgumentException("LOCATION_PLAN_DUPLICATE_ROUTE");
             if (!plan.enabled()) continue;
-            boolean hundred = "100번".equals(plan.group());
-            boolean laneAEnabled = hundred && settings.getHundred().isEnabled()
+            if(!RouteTimetable.DEFAULT.all().contains(plan.routeId())) {
+                org.slf4j.LoggerFactory.getLogger(RouteCallSchedule.class).warn("UNKNOWN_ROUTE_ID excluded: routeId={}",plan.routeId());
+                continue;
+            }
+            enabled.add(plan);
+            boolean laneAEnabled = settings.getHundred().isEnabled()
                     && settings.getHundred().getRouteIds().contains(plan.routeId());
-            boolean variantEnabled = hundred && settings.getVariantRouteIds().contains(plan.routeId());
-            boolean localEnabled = "관내".equals(plan.group()) && settings.getLocal().isEnabled()
+            boolean variantEnabled = settings.getVariantRouteIds().contains(plan.routeId());
+            boolean localEnabled = settings.getLocal().isEnabled()
                     && settings.getLocal().getRouteIds().contains(plan.routeId());
-            List<Window> windows = localEnabled || variantEnabled ? mergeWindows(plan.windows()) : List.of();
-            transformed.add(new Plan(plan.routeId(), variantEnabled ? "관내" : plan.group(), true, windows,
-                    laneAEnabled ? laneA : null, laneC, plan.lastAttempt()));
+            if(laneAEnabled) add(slots,counts,plan.routeId(),laneA,Role.HUNDRED,midnight);
+            // Lane A IDs and the two routes without timetables cannot enter lane B.
+            if(!RouteTimetable.DEFAULT.laneA().contains(plan.routeId()) && (localEnabled||variantEnabled)) {
+                for(Window window:RouteTimetable.DEFAULT.windows(plan.routeId(),day,settings)) {
+                    Instant terminal=terminalObservation.apply(plan.routeId(),window);
+                    var closed=LocationLaneSchedule.close(new LocationLaneSchedule.DepartureWindow(window.start(),window.end(),window.interval()),
+                        terminal==null?null:(int)java.time.Duration.between(midnight,terminal).getSeconds(),settings.getCloseAfterLastMinutes());
+                    add(slots,counts,plan.routeId(),new Window(closed.start(),closed.end(),closed.intervalSeconds()),Role.LOCAL_WINDOW,midnight);
+                }
+            }
         }
-        return compile(transformed, day, zone, true);
+        enabled.sort(Comparator.comparing(Plan::routeId));
+        for(int cycle=laneC.start();cycle<laneC.end();cycle+=laneC.interval()) {
+            var round=LocationLaneSchedule.laneCRound(enabled.stream().map(Plan::routeId).toList(),cycle,laneC.end(),settings.getLaneCInterRouteDelaySeconds());
+            for(var item:round) {
+                int end=Math.min(laneC.end(),cycle+laneC.interval());
+                add(slots,counts,item.routeId(),new Window(item.second(),end,end-item.second()),Role.BACKUP,midnight);
+            }
+        }
+        return new Day(slots.values().stream().sorted(Comparator.comparing(Slot::at).thenComparing(Slot::routeId)).toList(),
+            new Summary(counts[0],counts[1],counts[2],slots.size()));
     }
 
     private static List<Window> mergeWindows(List<Window> windows) {
