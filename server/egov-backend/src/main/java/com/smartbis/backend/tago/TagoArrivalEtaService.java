@@ -65,6 +65,7 @@ public class TagoArrivalEtaService {
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private CollectionDeadline deadline=CollectionDeadline.unlimited();
     @Value("${collection.capture-metadata:false}") private boolean captureMetadata;
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private LocalCollectionControl localControl;
     record AttemptTrace(Instant requested,Integer remaining,int retries) {}
     private final ThreadLocal<AttemptTrace> attemptTrace=new ThreadLocal<>();
     private ArrivalApiBudget budget;
@@ -146,6 +147,7 @@ public class TagoArrivalEtaService {
             initialDelay = 20000, scheduler="arrivalScheduler"
     )
     public void pollNextAssignedArrival() {
+        if(localControl!=null&&!localControl.callsAllowed()) { lastBatchResult="LOCAL_COLLECTION_SWITCH_OFF";return; }
         if(!deadline.open()) { lastBatchResult="COLLECTION_ENDED";return; }
         if (!enabled || mockMode || serviceKey.isBlank() || cityCode.isBlank()) {
             lastBatchResult = mockMode ? "MOCK_MODE" : "DISABLED";
@@ -220,10 +222,16 @@ public class TagoArrivalEtaService {
                 try {
                     var trace=attemptTrace.get();
                     var reservation=reservations.get(assigned);
+                    if(localControl!=null) {
+                        if(!captureMetadata)throw new IllegalStateException("LOCAL_RUN_METADATA_REQUIRED");
+                        // A cached visit is not a new final response in this run.
+                        if(reservation==null||trace==null)continue;
+                    }
                     if(captureMetadata && reservation!=null && trace!=null) {
                         if(reservation.id()==null) throw new IllegalStateException("ARRIVAL_VISIT_ID_REQUIRED");
                         predictions.collectPrediction(assigned.vehicleNumber(),target.routeId(),target.stopId(),queried,arrival,
-                            new ArrivalService.Observation(trace.requested(),trace.remaining(),reservation.id(),trace.retries(),true,false,failureReason));
+                            new ArrivalService.Observation(trace.requested(),trace.remaining(),reservation.id(),trace.retries(),true,false,failureReason,
+                                localControl==null?null:localControl.runId()));
                     } else predictions.collectPrediction(assigned.vehicleNumber(),target.routeId(),target.stopId(),queried,arrival);
                 } catch (org.springframework.web.server.ResponseStatusException unavailable) {
                     if (unavailable.getStatusCode().value()!=404) throw unavailable;
@@ -310,6 +318,7 @@ public class TagoArrivalEtaService {
         }
         var attempts=new java.util.concurrent.atomic.AtomicInteger();
         return budget.execute(()->{
+            if(localControl!=null)localControl.requireEnabled();
             Instant requested=clock.instant();
             int retries=attempts.getAndIncrement();
             attemptTrace.set(new AttemptTrace(requested,null,retries));

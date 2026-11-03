@@ -74,6 +74,7 @@ public class TagoVehicleLocationService {
     record PositionTrace(java.util.UUID id,java.time.Instant requested,java.time.Instant responded,String lane) {}
     private final ThreadLocal<PositionTrace> positionTrace=new ThreadLocal<>();
     @org.springframework.beans.factory.annotation.Value("${collection.capture-metadata:false}") private boolean captureMetadata;
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private LocalCollectionControl localControl;
     @Autowired(required=false)
     void setSnapshots(PositionSnapshots value) { snapshots=value; }
 
@@ -127,6 +128,7 @@ public class TagoVehicleLocationService {
 
     @Scheduled(fixedDelayString = "#{${tago.location.operations.enabled:false} ? 1000 : ${tago.vehicle-location.poll-interval-ms:10000}}", initialDelay = 15000)
     public void pollScheduled() {
+        if(localControl!=null&&!localControl.callsAllowed())return;
         if (!enabled || mockMode) {
             lastResult = mockMode ? "MOCK_MODE" : "DISABLED";
             return;
@@ -144,6 +146,7 @@ public class TagoVehicleLocationService {
     @Scheduled(fixedDelay=1000,initialDelay=15000,scheduler="laneCScheduler")
     public void pollLaneC() { pollLane(RouteCallSchedule.Role.BACKUP); }
     void pollLane(RouteCallSchedule.Role lane) {
+        if(localControl!=null&&!localControl.callsAllowed())return;
         if(!enabled||mockMode||operationalExecution==null||operationalScheduler==null) return;
         if(!operationalExecution.locationTimeAllowed()) return;
         long gap=operationalScheduler.gapMillis(lane);
@@ -376,6 +379,7 @@ public class TagoVehicleLocationService {
         return sendDirectRequest(request);
     }
     private HttpResponse<byte[]> sendDirectRequest(HttpRequest request) throws Exception {
+        if(localControl!=null)localControl.requireEnabled();
         java.time.Instant requested=java.time.Instant.now();
         java.util.UUID id=java.util.UUID.randomUUID();
         HttpResponse<byte[]> response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
@@ -444,6 +448,7 @@ public class TagoVehicleLocationService {
 
     private boolean persist(VehiclePosition position) {
         if(!observationMode) return false;
+        if(localControl!=null&&!captureMetadata)throw new IllegalStateException("LOCAL_RUN_METADATA_REQUIRED");
         if(!captureMetadata) {
             jdbc.update("""
                 INSERT INTO bus_positions(vehicle_number,route_id,node_id,node_order,latitude,longitude,observed_at,source,raw_payload)
@@ -452,6 +457,15 @@ public class TagoVehicleLocationService {
             return true;
         }
         if(position.trace()==null) throw new IllegalStateException("POSITION_CALL_METADATA_REQUIRED");
+        if(localControl!=null) {
+            jdbc.update("""
+                INSERT INTO bus_positions(vehicle_number,route_id,node_id,node_order,latitude,longitude,observed_at,source,raw_payload,
+                    requested_at,responded_at,call_id,call_lane,collection_run_id)
+                VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP,'TAGO_OBSERVATION',CAST(? AS jsonb),?,?,?,?,?)
+                """,position.vehicleNumber(),position.routeId(),position.nodeId(),position.nodeOrder(),position.latitude(),position.longitude(),position.rawPayload(),
+                java.sql.Timestamp.from(position.trace().requested()),java.sql.Timestamp.from(position.trace().responded()),position.trace().id(),position.trace().lane(),localControl.runId());
+            return true;
+        }
         // Keep raw updowncd/nodeord without assignment or direction filtering.
         jdbc.update("""
                 INSERT INTO bus_positions(vehicle_number, route_id, node_id, node_order,

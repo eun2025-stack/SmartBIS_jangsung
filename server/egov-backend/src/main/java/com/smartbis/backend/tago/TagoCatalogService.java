@@ -45,6 +45,7 @@ import static org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE;
 /** Administrator-triggered, validate-then-persist import of the TAGO Jangseong route catalog. */
 @Service
 public class TagoCatalogService {
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private LocalCollectionControl localControl;
     private static final Logger log = LoggerFactory.getLogger(TagoCatalogService.class);
     /** Operator-reviewed directions for the 2026-10 Jangseong UNKNOWN batch.
      * These label-only overrides preserve TAGO stop rows and stop order. */
@@ -575,6 +576,7 @@ public class TagoCatalogService {
     }
 
     private Document requestOnce(String path, Map<String, String> query, int attempt) throws Exception {
+        if(localControl!=null)throw new IllegalStateException("LOCAL_CATALOG_DISABLED");
         long wait = MIN_REQUEST_GAP_MILLIS - (System.currentTimeMillis() - lastRequestAt);
         if (wait > 0) Thread.sleep(wait);
         StringBuilder url = new StringBuilder(baseUrl).append(path).append("?serviceKey=")

@@ -84,5 +84,26 @@ services:
       - egov-backend
     restart: unless-stopped
 
+  # Explicit opt-in only. Never use the root dotenv for this service:
+  # tools/local_collection_control.py up supplies --env-file explicitly.
+  local-collection-backend:
+    profiles: [local-collection]
+    image: localhost/smartbis-egov-backend:local-run-control
+    build:
+      context: ./server/egov-backend
+      dockerfile: Dockerfile
+    container_name: smartbis-local-collection-backend
+    restart: "no"
+    # The existing local PostgreSQL namespace supplies loopback PostgreSQL.
+    # This does not start, change or publish any PostgreSQL container/port.
+    network_mode: "container:smartbis_jangsung-postgres-db-1"
+    env_file:
+      - ./.tmp/local-collection.env
+    environment:
+      SPRING_PROFILES_ACTIVE: local-collection
+      COLLECTION_CONTROL_DIRECTORY: /collection-control
+    volumes:
+      - ./.tmp/local-collection-control:/collection-control
+
 volumes:
   db-data:

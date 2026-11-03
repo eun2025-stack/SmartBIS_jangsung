@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Read-only TAGO observation comparison; Python 3.10+, no third-party packages."""
 import argparse
+import uuid
 import calendar as month_calendar
 import csv
 import io
@@ -249,6 +250,10 @@ def parse_observations(rows, include_tago=False):
 
 def load_observations(args, first, last):
     include_tago = getattr(args, 'include_tago', False)
+    run_id=getattr(args,'collection_run_id',None)
+    if run_id:
+        run_id=str(uuid.UUID(run_id))
+        if uuid.UUID(run_id).int==0:raise InputError('Archived pre_run cannot be judged')
     if args.observations_csv:
         rows = read_csv(args.observations_csv)
         if not rows:
@@ -256,13 +261,34 @@ def load_observations(args, first, last):
         header = [s.strip() for s in rows[0]]
         if not {'vehicle_number','route_id','observed_at','node_order'} <= set(header):
             raise InputError('Observation CSV requires vehicle_number, route_id, observed_at, node_order')
-        observations = parse_observations((dict(zip(header,r)) for r in rows[1:] if any(r)), include_tago)
+        if run_id and 'collection_run_id' not in header:raise InputError('Run-scoped CSV requires collection_run_id')
+        selected=(dict(zip(header,r)) for r in rows[1:] if any(r))
+        if run_id:selected=(r for r in selected if r.get('collection_run_id')==run_id and str(r.get('interpolated','false')).lower() not in ('true','1'))
+        observations = parse_observations(selected, include_tago)
     else:
         source_filter = "source IN ('TAGO_OBSERVATION', 'TAGO')" if include_tago else "source = 'TAGO_OBSERVATION'"
+        run_filter=''
+        if run_id:
+            if args.db_name!='smartbis_db_copy2' or args.podman_container!='smartbis_jangsung-postgres-db-1' or args.db_host:
+                raise InputError('Run-scoped DB analysis requires the designated local copy container')
+            import local_collection_admin as local_admin
+            from urllib.parse import urlsplit
+            import json
+            connections=json.loads(local_admin.bounded(['podman','system','connection','list','--format','json']))
+            default=[c for c in connections if c.get('Default')]
+            if len(default)!=1 or urlsplit(default[0].get('URI','')).hostname not in ('localhost','127.0.0.1','::1'):
+                raise InputError('Local Podman connection required')
+            run_filter=f"""AND collection_run_id='{run_id}'::uuid
+AND COALESCE(raw_payload->>'interpolated','false') NOT IN ('true','1')
+AND EXISTS(SELECT 1 FROM collection_runs r WHERE r.collection_run_id=bus_positions.collection_run_id AND NOT r.archived)
+AND NOT EXISTS(SELECT 1 FROM collection_pause_intervals p WHERE p.collection_run_id=bus_positions.collection_run_id
+ AND p.exclude_from_analysis AND bus_positions.observed_at>=p.started_at
+ AND (p.ended_at IS NULL OR bus_positions.observed_at<p.ended_at))"""
         sql = f"""BEGIN TRANSACTION READ ONLY;
 SET LOCAL statement_timeout = '60s';
 COPY (SELECT vehicle_number, route_id, observed_at, node_order, source, node_id FROM bus_positions
 WHERE {source_filter}
+{run_filter}
 AND observed_at >= '{first.isoformat()} 00:00:00+09'::timestamptz
 AND observed_at < '{last.isoformat()} 00:00:00+09'::timestamptz
 ORDER BY observed_at, vehicle_number, route_id) TO STDOUT WITH (FORMAT CSV, HEADER TRUE);
@@ -275,8 +301,10 @@ ROLLBACK;"""
             command += ['-h',args.db_host]
         if args.db_port:
             command += ['-p',str(args.db_port)]
+        if run_id:command=[local_admin.TIMEOUT,'90',*command,'-w']
         proc = subprocess.run(command,input=sql.encode('utf-8'),stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=90,check=False)
         if proc.returncode:
+            if run_id:raise InputError('Run-scoped read-only query failed; connection details suppressed')
             raise InputError('Read-only DB query failed: '+proc.stderr.decode('utf-8',errors='replace'))
         observations = parse_observations(csv.DictReader(io.StringIO(proc.stdout.decode('utf-8-sig'))), include_tago)
     return [o for o in observations if first <= o.at.date() < last]
@@ -688,6 +716,7 @@ def main():
     parser.add_argument('--start-date',help='YYYY-MM-DD KST inclusive')
     parser.add_argument('--end-date',help='YYYY-MM-DD KST inclusive')
     parser.add_argument('--include-tago',action='store_true',help='Also read source TAGO; default observation-only')
+    parser.add_argument('--collection-run-id',help='One non-archived local collection UUID; exclude all other runs and pauses')
     parser.add_argument('--interpolation-rules',default=str(Path(__file__).parent/'config'/'interpolation_rules.json'))
     parser.add_argument('--route-stops',default=str(Path(__file__).parents[1]/'장성교통 노선도'/'TAGO_장성군_노선별_경유정류소_20261002.csv'),
                         help='Offline route_id,nodeord_raw stop catalog for diagnostic collection rates')

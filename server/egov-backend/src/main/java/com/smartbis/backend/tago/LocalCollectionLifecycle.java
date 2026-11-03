@@ -17,8 +17,10 @@ import org.springframework.stereotype.Component;
 @Profile("local-collection")
 public final class LocalCollectionLifecycle {
     private final CollectionSession session;
-    public LocalCollectionLifecycle(JdbcTemplate jdbc,CollectionDeadline deadline) {
-        session=new CollectionSession(new JdbcSessionStore(jdbc),Clock.systemUTC(),deadline);
+    private final LocalCollectionControl control;
+    public LocalCollectionLifecycle(JdbcTemplate jdbc,CollectionDeadline deadline,LocalCollectionControl control) {
+        this.control=control;
+        session=new CollectionSession(new JdbcSessionStore(jdbc,control::runId),Clock.systemUTC(),deadline);
     }
     @EventListener(ApplicationReadyEvent.class) public void ready() { session.start(); }
     @org.springframework.context.annotation.Bean(name="collectionSessionScheduler")
@@ -31,22 +33,28 @@ public final class LocalCollectionLifecycle {
     public static final class JdbcSessionStore implements CollectionSession.Store {
         private final JdbcTemplate jdbc;
         private final TransactionTemplate transaction;
+        private final java.util.function.Supplier<UUID> collectionRun;
         public JdbcSessionStore(JdbcTemplate jdbc) {
+            this(jdbc,()->new UUID(0,0));
+        }
+        public JdbcSessionStore(JdbcTemplate jdbc,java.util.function.Supplier<UUID> collectionRun) {
             this.jdbc=jdbc;transaction=new TransactionTemplate(new JdbcTransactionManager(jdbc.getDataSource()));
+            this.collectionRun=collectionRun;
         }
         public void start(UUID run,Instant now) {
             transaction.executeWithoutResult(status->{
                 if(!"smartbis_db_copy2".equals(jdbc.queryForObject("SELECT current_database()",String.class)))
                     throw new IllegalStateException("LOCAL_COLLECTION_DATABASE_REQUIRED");
                 jdbc.update("""
-                    INSERT INTO collection_pause_intervals(started_at,ended_at,reason,exclude_from_analysis)
-                    SELECT MIN(last_heartbeat_at),?,'기타',true FROM collection_process_runs
-                    WHERE stopped_at IS NULL HAVING COUNT(*)>0
-                      AND NOT EXISTS(SELECT 1 FROM collection_pause_intervals WHERE ended_at IS NULL)
+                    INSERT INTO collection_pause_intervals(started_at,ended_at,reason,exclude_from_analysis,collection_run_id)
+                    SELECT MIN(last_heartbeat_at),?,'기타',true,collection_run_id FROM collection_process_runs r
+                    WHERE stopped_at IS NULL
+                      AND NOT EXISTS(SELECT 1 FROM collection_pause_intervals p WHERE ended_at IS NULL AND p.collection_run_id=r.collection_run_id)
+                    GROUP BY collection_run_id HAVING COUNT(*)>0
                     """,Timestamp.from(now));
                 jdbc.update("UPDATE collection_process_runs SET stopped_at=?,stop_reason='기타' WHERE stopped_at IS NULL",Timestamp.from(now));
                 jdbc.update("UPDATE collection_pause_intervals SET ended_at=? WHERE ended_at IS NULL",Timestamp.from(now));
-                jdbc.update("INSERT INTO collection_process_runs(run_id,started_at,last_heartbeat_at) VALUES(?,?,?)",run,Timestamp.from(now),Timestamp.from(now));
+                jdbc.update("INSERT INTO collection_process_runs(run_id,started_at,last_heartbeat_at,collection_run_id) VALUES(?,?,?,?)",run,Timestamp.from(now),Timestamp.from(now),collectionRun.get());
             });
         }
         public void heartbeat(UUID run,Instant at) {
@@ -56,7 +64,7 @@ public final class LocalCollectionLifecycle {
             transaction.executeWithoutResult(status->{
                 int changed=jdbc.update("UPDATE collection_process_runs SET stopped_at=?,last_heartbeat_at=?,stop_reason=? WHERE run_id=? AND stopped_at IS NULL",
                     Timestamp.from(at),Timestamp.from(at),reason,run);
-                if(changed==1) jdbc.update("INSERT INTO collection_pause_intervals(started_at,reason,exclude_from_analysis) VALUES(?,?,true)",Timestamp.from(at),reason);
+                if(changed==1) jdbc.update("INSERT INTO collection_pause_intervals(started_at,reason,exclude_from_analysis,collection_run_id) VALUES(?,?,true,?)",Timestamp.from(at),reason,collectionRun.get());
             });
         }
     }

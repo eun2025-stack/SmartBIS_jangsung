@@ -18,9 +18,12 @@ public final class CollectionSession {
         this.store=store;this.clock=clock;this.deadline=deadline;
     }
     public synchronized void start() {
+        start(UUID.randomUUID());
+    }
+    public synchronized void start(UUID next) {
         deadline.requireOpen();
         if(run!=null) return;
-        UUID next=UUID.randomUUID();store.start(next,clock.instant());run=next;
+        store.start(next,clock.instant());run=next;
     }
     public synchronized void tick() {
         if(run==null) return;

@@ -104,12 +104,23 @@ public class ArrivalService {
     public void collectPrediction(String vehicleNumber,String expectedRoute,String expectedStop, Instant queriedAt, Instant arrivalAt) {
         collectPrediction(vehicleNumber,expectedRoute,expectedStop,queriedAt,arrivalAt,null);
     }
-    public record Observation(Instant requestedAt,Integer remainingStops,java.util.UUID visitId,int retryCount,boolean finalResult,boolean interpolated,String failureReason) {}
+    public record Observation(Instant requestedAt,Integer remainingStops,java.util.UUID visitId,int retryCount,boolean finalResult,boolean interpolated,String failureReason,java.util.UUID collectionRunId) {
+        public Observation(Instant requestedAt,Integer remainingStops,java.util.UUID visitId,int retryCount,boolean finalResult,boolean interpolated,String failureReason) {
+            this(requestedAt,remainingStops,visitId,retryCount,finalResult,interpolated,failureReason,null);
+        }
+    }
     public void collectPrediction(String vehicleNumber,String expectedRoute,String expectedStop,Instant queriedAt,Instant arrivalAt,Observation observation) {
         Long observationId=null;
         if(observation!=null) {
             // Preserve the final response even if position/geometry changed during HTTP recovery.
-            observationId=jdbcTemplate.queryForObject("""
+            if(observation.collectionRunId()!=null) observationId=jdbcTemplate.queryForObject("""
+                INSERT INTO arrival_predictions(vehicle_number,route_id,next_node_id,observed_at,eta_queried_at,estimated_arrival_at,
+                  requested_at,arrprevstationcnt,visit_id,retry_count,is_final,interpolated,failure_reason,collection_run_id)
+                VALUES(?,?,?,CURRENT_TIMESTAMP,?,?,?,?,?,?,?,?,?,?) RETURNING prediction_id
+                """,Long.class,vehicleNumber,expectedRoute,expectedStop,queriedAt==null?null:Timestamp.from(queriedAt),
+                arrivalAt==null?null:Timestamp.from(arrivalAt),Timestamp.from(observation.requestedAt()),observation.remainingStops(),
+                observation.visitId(),observation.retryCount(),observation.finalResult(),observation.interpolated(),observation.failureReason(),observation.collectionRunId());
+            else observationId=jdbcTemplate.queryForObject("""
                 INSERT INTO arrival_predictions(vehicle_number,route_id,next_node_id,observed_at,eta_queried_at,estimated_arrival_at,
                   requested_at,arrprevstationcnt,visit_id,retry_count,is_final,interpolated,failure_reason)
                 VALUES(?,?,?,CURRENT_TIMESTAMP,?,?,?,?,?,?,?,?,?) RETURNING prediction_id
