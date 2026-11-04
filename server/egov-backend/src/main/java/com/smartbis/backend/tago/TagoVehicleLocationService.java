@@ -282,8 +282,6 @@ public class TagoVehicleLocationService {
                   FROM bus_routes r
                   JOIN bus_vehicles v
                     ON v.route_id = r.route_id AND v.city_code = r.city_code AND v.active = true
-                  JOIN android_device_vehicle_assignments a
-                    ON a.vehicle_number = v.vehicle_number
                  WHERE r.city_code = ? AND r.active = true
                  ORDER BY r.route_id
                 """, (rs, rowNum) -> rs.getString(1), cityCode);
