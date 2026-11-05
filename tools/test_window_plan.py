@@ -4,6 +4,7 @@ import csv
 import io
 import tempfile
 import unittest
+from source_test_policy import source_material_test
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -99,6 +100,7 @@ class WindowPlanTests(unittest.TestCase):
         dep,_,_=w.parse_departures([[None]*9]*3+[row],self.rules)
         self.assertEqual(dep[0].trip_seconds,1800)
 
+    @source_material_test
     def test_actual_sheet_has_333_departures(self):
         root=Path(w.__file__).parents[1]
         path=root/'장성교통 노선도'/'군민운수 자료'/'노선(사이텍).xlsx'
@@ -164,6 +166,7 @@ class WindowPlanTests(unittest.TestCase):
         self.assertEqual(rows[0]['candidate_keycodes'],'20|21')
         self.assertEqual(rows[0]['candidate_stop_order_match_pct'],'20:A=|21:B=')
 
+    @source_material_test
     def test_actual_confirmed_266_unresolved_67_and_no_leak(self):
         root=Path(w.__file__).parents[1]
         mapping=w.load_mapping(root/'군민운수 운행관리시스템'/'routeid&kecode_matching_ts.csv',self.rules)
@@ -187,6 +190,7 @@ class WindowPlanTests(unittest.TestCase):
         self.assertEqual(rows[0]['calls_300s'],'17')
         self.assertEqual(rows[0]['calls_600s'],'9')
 
+    @source_material_test
     def test_actual_mapping_has_17_hundred_and_88_local_without_prefix_rule(self):
         path=Path(w.__file__).parents[1]/'군민운수 운행관리시스템'/'routeid&kecode_matching_ts.csv'
         _,_,_,hundred,local=w.load_mapping(path,self.rules)

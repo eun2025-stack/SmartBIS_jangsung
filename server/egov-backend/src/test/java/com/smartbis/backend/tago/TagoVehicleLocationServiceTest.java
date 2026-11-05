@@ -99,6 +99,7 @@ class TagoVehicleLocationServiceTest {
                 jdbc,
                 "test-key", "AUTO", "36450", "http://127.0.0.1:" + server.getAddress().getPort(),
                 true, true, 10000, false, false, HttpClient.newHttpClient());
+        when(jdbc.queryForObject(contains("android_device_vehicle_assignments"),eq(Long.class))).thenReturn(1L);
 
         try {
             assertEquals(0, service.pollNextAssignedRoute());
@@ -114,7 +115,7 @@ class TagoVehicleLocationServiceTest {
 
     @Test
     @SuppressWarnings({"unchecked", "rawtypes"})
-    void observationModeCyclesAll105RoutesAndKeepsEveryVehicleIncludingZeroOrderAndUnknownDirection() throws Exception {
+    void observationModeCyclesAll105RoutesAndKeepsAssignedActiveVehiclesIncludingZeroOrderAndUnknownDirection() throws Exception {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         List<String> routes = IntStream.rangeClosed(1, 105).mapToObj(i -> "route-" + i).toList();
         doAnswer(invocation -> {
@@ -139,6 +140,8 @@ class TagoVehicleLocationServiceTest {
         when(response.statusCode()).thenReturn(200);
         when(response.body()).thenReturn(xml.getBytes(StandardCharsets.UTF_8));
         doReturn(response).when(http).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
+        when(jdbc.update(anyString(), any(Object[].class))).thenReturn(1);
+        when(jdbc.queryForObject(contains("android_device_vehicle_assignments"),eq(Long.class))).thenReturn(3L);
         var service = new TagoVehicleLocationService(jdbc, "key", "AUTO", "36450", "http://localhost",
                 true, true, 10000, false, true, http);
 
@@ -156,9 +159,11 @@ class TagoVehicleLocationServiceTest {
         }
         ArgumentCaptor<String> payloads = ArgumentCaptor.forClass(String.class);
         verify(jdbc, times(318)).update(contains("'TAGO_OBSERVATION'"),
-                any(), any(), any(), any(), any(), any(), payloads.capture());
+                any(), any(), any(), any(), any(), any(), payloads.capture(),
+                any(java.sql.Timestamp.class),any(java.sql.Timestamp.class),any(java.util.UUID.class),eq("C"),anyString());
         verify(jdbc, times(106)).update(contains("'TAGO_OBSERVATION'"),
-                eq("외부차량-1"), anyString(), eq(""), eq(0), isNull(), isNull(), anyString());
+                eq("외부차량-1"), anyString(), eq(""), eq(0), isNull(), isNull(), anyString(),
+                any(java.sql.Timestamp.class),any(java.sql.Timestamp.class),any(java.util.UUID.class),eq("C"),eq("외부차량-1"));
         var raw = new ObjectMapper().readTree(payloads.getAllValues().get(0));
         assertEquals("0", raw.get("nodeord").asText());
         assertEquals("UNKNOWN-RAW", raw.get("updowncd").asText());

@@ -43,6 +43,7 @@ public class TagoArrivalEtaService {
             + "getSttnAcctoSpcifyRouteBusArvlPrearngeInfoList";
     private static final Pattern PERCENT_ESCAPE = Pattern.compile("%[0-9a-fA-F]{2}");
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(5);
+    static final int APPROACH_WINDOW_STOPS = 2;
 
     private final String serviceKey;
     private final String keyMode;
@@ -186,10 +187,9 @@ public class TagoArrivalEtaService {
                         ) continue;
                 visits.ensure(assigned.vehicleNumber(),assigned.routeId(),assigned.stopId(),assigned.direction(),now);
                 var prior=visits.read(assigned.vehicleNumber());
-                var savedEta=predictions.savedEta(assigned.routeId(),assigned.stopId());
-                boolean overdue=savedEta!=null && savedEta.arrivalAt()!=null && !now.isBefore(savedEta.arrivalAt());
                 if(!com.smartbis.backend.arrival.ArrivalVisitPolicy.shouldQuery(assigned.nodeOrder(),
-                    prior==null?0:prior.attempts(),assigned.currentOrder()==0,overdue,stopStep)) continue;
+                    assigned.minimumOrder(),assigned.currentOrder(),prior==null?0:prior.attempts(),
+                    assigned.currentOrder()==0,isOverdue(assigned,now),stopStep)) continue;
                 var reservation=visits.claim(assigned.vehicleNumber(),assigned.routeId(),assigned.stopId(),assigned.direction(),now);
                 if (reservation!=null) reservations.put(assigned,reservation);
             }
@@ -260,15 +260,70 @@ public class TagoArrivalEtaService {
     }
 
     private List<ArrivalTarget> loadAssignedArrivalTargets() {
+        var byVehicle=new java.util.LinkedHashMap<String,List<ArrivalTarget>>();
+        for(var candidate:loadArrivalCandidates()) {
+            byVehicle.computeIfAbsent(candidate.vehicleNumber(),key->new ArrayList<>()).add(candidate);
+        }
+        var result=new ArrayList<ArrivalTarget>();
+        Instant now=clock.instant();
+        for(var candidates:byVehicle.values()) {
+            var first=candidates.get(0);
+            String active=visits.activeStop(first.vehicleNumber(),first.routeId(),first.direction());
+            var selected=selectTarget(candidates,active,first.currentOrder()==0,c->isOverdue(c,now),stopStep);
+            if(selected!=null) result.add(selected);
+        }
+        return result;
+    }
+
+    private boolean isOverdue(ArrivalTarget target,Instant now) {
+        var savedEta=predictions.savedEta(target.routeId(),target.stopId());
+        return savedEta!=null && savedEta.arrivalAt()!=null && !now.isBefore(savedEta.arrivalAt());
+    }
+
+    static ArrivalTarget selectTarget(List<ArrivalTarget> candidates,String activeStop,boolean firstTripVisit,
+            java.util.function.Predicate<ArrivalTarget> overdue,int stopStep) {
+        var eligible=candidates.stream().filter(TagoArrivalEtaService::withinApproachWindow)
+            .filter(c->com.smartbis.backend.arrival.ArrivalVisitPolicy.shouldQuery(c.nodeOrder(),c.minimumOrder(),
+                c.currentOrder(),0,firstTripVisit,overdue.test(c),stopStep))
+            .sorted(java.util.Comparator.comparingInt(ArrivalTarget::nodeOrder)).toList();
+        // Qualification deliberately ignores attempts: a completed active visit must not rotate away.
+        return eligible.stream().filter(c->c.stopId().equals(activeStop)).findFirst()
+            .orElse(eligible.isEmpty()?null:eligible.get(0));
+    }
+
+    static boolean withinApproachWindow(ArrivalTarget candidate) {
+        long remaining=(long)candidate.nodeOrder()-candidate.currentOrder();
+        return remaining>=0 && remaining<=APPROACH_WINDOW_STOPS;
+    }
+
+    private List<ArrivalTarget> loadArrivalCandidates() {
+        // rev6 10.3: continuity is an analysis criterion, not a collection gate.
+        // Record the defect without renumbering rows or excluding the route.
+        for(var issue:jdbc.queryForList("""
+            SELECT route_id,count(*) stop_count,count(DISTINCT node_order) distinct_count,
+                   MIN(node_order) first_order,MAX(node_order) last_order
+            FROM bus_route_stops GROUP BY route_id
+            HAVING count(*)<>count(DISTINCT node_order)
+                OR MAX(node_order)::bigint-MIN(node_order)+1<>count(DISTINCT node_order)
+            """)) {
+            log.warn("CATALOG_ORDER_CONTINUITY: route={} count={} distinct={} first={} last={}",
+                issue.get("route_id"),issue.get("stop_count"),issue.get("distinct_count"),
+                issue.get("first_order"),issue.get("last_order"));
+        }
         if(!snapshots.all().isEmpty()) {
             var result=new ArrayList<ArrivalTarget>();
             for(var position:snapshots.all()) {
-                if(position.order()==null||position.order()<0) continue;
+                if(position.order()==null) continue;
                 result.addAll(jdbc.query("""
-                    SELECT node_id,node_order FROM bus_route_stops
-                    WHERE route_id=? AND node_order=?+1 ORDER BY node_id LIMIT 1
+                    WITH bounds AS (
+                      SELECT MIN(node_order) minimum_order FROM bus_route_stops WHERE route_id=?
+                    )
+                    SELECT s.node_id,s.node_order,b.minimum_order FROM bus_route_stops s CROSS JOIN bounds b
+                    WHERE s.route_id=? AND s.node_order>=? AND s.node_order::bigint<=?::bigint+?
+                    ORDER BY s.node_order LIMIT ?
                     """,(rs,n)->new ArrivalTarget(position.route(),rs.getString(1),position.vehicle(),"GLOBAL",
-                        rs.getInt(2),position.order()),position.route(),position.order()));
+                        rs.getInt(2),position.order(),rs.getInt(3)),position.route(),position.route(),position.order(),
+                        position.order(),APPROACH_WINDOW_STOPS,APPROACH_WINDOW_STOPS+1));
             }
             return result;
         }
@@ -276,27 +331,33 @@ public class TagoArrivalEtaService {
                 WITH position AS (
                   SELECT DISTINCT ON (p.vehicle_number) p.*
                   FROM bus_positions p
-                  WHERE p.source IN ('TAGO','TAGO_OBSERVATION') AND p.node_order>=0
+                  WHERE p.source IN ('TAGO','TAGO_OBSERVATION') AND p.node_order IS NOT NULL
                     AND COALESCE(p.raw_payload->>'interpolated','false') NOT IN ('true','1')
                   ORDER BY p.vehicle_number,p.observed_at DESC,p.position_id DESC
+                ), bounds AS (
+                  SELECT route_id,MIN(node_order) minimum_order FROM bus_route_stops GROUP BY route_id
                 )
                 SELECT DISTINCT position.route_id,next_stop.node_id,position.vehicle_number,
-                       'GLOBAL',next_stop.node_order,position.node_order
+                       'GLOBAL',next_stop.node_order,position.node_order,b.minimum_order
                 FROM position JOIN bus_routes route ON route.route_id=position.route_id AND route.active=true
-                JOIN bus_route_stops next_stop
-                    ON next_stop.route_id = position.route_id
-                AND next_stop.node_order = position.node_order + 1
+                JOIN bounds b ON b.route_id=position.route_id
+                JOIN LATERAL (
+                  SELECT s.node_id,s.node_order FROM bus_route_stops s
+                  WHERE s.route_id=position.route_id AND s.node_order>=position.node_order
+                    AND s.node_order::bigint<=position.node_order::bigint+?
+                  ORDER BY s.node_order LIMIT ?
+                ) next_stop ON true
                 WHERE route.city_code = ?
-                ORDER BY position.route_id,next_stop.node_id,position.vehicle_number
+                ORDER BY position.route_id,position.vehicle_number,next_stop.node_order
                 """,
-                (rs, rowNum) -> new ArrivalTarget(rs.getString(1),rs.getString(2),rs.getString(3),rs.getString(4),rs.getInt(5),rs.getInt(6)),
-                cityCode
+                (rs, rowNum) -> new ArrivalTarget(rs.getString(1),rs.getString(2),rs.getString(3),rs.getString(4),rs.getInt(5),rs.getInt(6),rs.getInt(7)),
+                APPROACH_WINDOW_STOPS,APPROACH_WINDOW_STOPS+1,cityCode
         );
     }
 
-    record ArrivalTarget(String routeId, String stopId, String vehicleNumber,String direction,int nodeOrder,int currentOrder) {
-        ArrivalTarget(String routeId,String stopId,String vehicleNumber) { this(routeId,stopId,vehicleNumber,"GLOBAL",2,1); }
-        ArrivalTarget(String routeId,String stopId,String vehicleNumber,String direction) { this(routeId,stopId,vehicleNumber,direction,2,1); }
+    record ArrivalTarget(String routeId, String stopId, String vehicleNumber,String direction,int nodeOrder,int currentOrder,int minimumOrder) {
+        ArrivalTarget(String routeId,String stopId,String vehicleNumber) { this(routeId,stopId,vehicleNumber,"GLOBAL",2,1,2); }
+        ArrivalTarget(String routeId,String stopId,String vehicleNumber,String direction) { this(routeId,stopId,vehicleNumber,direction,2,1,2); }
     }    
 
     private Integer requestSeconds(String routeId, String stopId) throws Exception {

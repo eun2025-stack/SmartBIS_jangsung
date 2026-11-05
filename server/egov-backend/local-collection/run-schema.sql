@@ -1,7 +1,17 @@
--- Local copy only; deliberately outside Flyway and not V020.
+-- Explicitly approved target only; deliberately outside Flyway and not V020.
+-- rev6 sections 3, 10.3: raw order is unique across the whole route.
+-- Existing duplicate orders cause an error; never renumber or delete them.
 DO $$ BEGIN
- IF current_database()<>'smartbis_db_copy2' THEN RAISE EXCEPTION 'LOCAL_COLLECTION_DATABASE_REQUIRED'; END IF;
+ IF EXISTS (SELECT 1 FROM bus_route_stops GROUP BY route_id,node_order HAVING count(*)>1) THEN
+   RAISE EXCEPTION 'CATALOG_ORDER_DUPLICATE';
+ END IF;
 END $$;
+ALTER TABLE bus_route_stops DROP CONSTRAINT IF EXISTS bus_route_stops_pkey;
+ALTER TABLE bus_route_stops ADD CONSTRAINT bus_route_stops_pkey PRIMARY KEY (route_id, node_order);
+-- rev6 section 6.2: one final visit result, independent of HTTP retry attempts.
+-- Existing count=2 rows require a separate decision; this script never resets them.
+ALTER TABLE arrival_query_visits DROP CONSTRAINT IF EXISTS arrival_query_visits_query_count_check;
+ALTER TABLE arrival_query_visits ADD CONSTRAINT arrival_query_visits_query_count_check CHECK (query_count BETWEEN 0 AND 1);
 CREATE TABLE IF NOT EXISTS collection_runs (
  collection_run_id uuid PRIMARY KEY,
  prepared_at timestamptz NOT NULL,

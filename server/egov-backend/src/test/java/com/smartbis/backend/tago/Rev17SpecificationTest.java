@@ -33,7 +33,7 @@ class Rev17SpecificationTest {
         var d=RouteTimetable.DEFAULT;
         return d.all().stream().sorted().map(r->new RouteCallSchedule.Plan(r,
             d.regular().contains(r)||(!d.laneA().contains(r)&&!d.variant().contains(r))?"관내":"100번",
-            true,List.of(),null,new RouteCallSchedule.Window(21600,75600,1800),null)).toList();
+            true,d.windows(r,DAY,settings()),null,new RouteCallSchedule.Window(21600,75600,1800),null)).toList();
     }
     @Test void t2NightIsRejectedByActualExecutionGateAndLogged() {
         var logger=(Logger)LoggerFactory.getLogger(TagoLocationExecution.class);
@@ -96,17 +96,21 @@ class Rev17SpecificationTest {
             }
         }
     }
-    @Test void t11EvenStopOneVisitAndNoEtaBandGate() {
+    @Test void t11OddExceptionsAndAbsoluteEvenStopKeepOneVisitCap() {
         for(int eta:new int[]{20,90,179,180,360}) {
-            assertTrue(ArrivalVisitPolicy.shouldQuery(2,0,false,false));
-            assertFalse(ArrivalVisitPolicy.shouldQuery(2,1,false,true));
+            assertTrue(ArrivalVisitPolicy.shouldQuery(2,1,1,0,false,false,2));
+            assertFalse(ArrivalVisitPolicy.shouldQuery(2,1,1,1,false,false,2));
             assertNull(ArrivalRulePolicy.defaults().nextQuery(NOW,eta,1));
         }
-        assertTrue(ArrivalVisitPolicy.shouldQuery(0,0,false,false));
-        assertFalse(ArrivalVisitPolicy.shouldQuery(3,0,false,false));
-        assertTrue(ArrivalVisitPolicy.shouldQuery(1,0,true,false));
-        assertTrue(ArrivalVisitPolicy.shouldQuery(3,0,false,true));
-        assertThrows(IllegalArgumentException.class,()->ArrivalVisitPolicy.shouldQuery(2,0,false,false,3));
+        assertTrue(ArrivalVisitPolicy.shouldQuery(1,0,0,0,true,false,2));
+        assertTrue(ArrivalVisitPolicy.shouldQuery(3,0,1,0,false,true,2));
+        assertFalse(ArrivalVisitPolicy.shouldQuery(3,0,1,0,false,false,2));
+        assertFalse(ArrivalVisitPolicy.shouldQuery(1,0,0,1,true,false,2));
+        assertFalse(ArrivalVisitPolicy.shouldQuery(7,7,7,0,false,false,2));
+        assertTrue(ArrivalVisitPolicy.shouldQuery(8,7,7,0,false,false,2));
+        assertTrue(ArrivalVisitPolicy.shouldQuery(10,7,8,0,false,false,2));
+        assertFalse(ArrivalVisitPolicy.shouldQuery(10,7,11,0,false,false,2));
+        assertThrows(IllegalArgumentException.class,()->ArrivalVisitPolicy.shouldQuery(9,7,8,0,false,false,3));
     }
     @Test void t11NoResponseUsesHourlyLearningThenPerStopPlaceholder() {
         var jdbc=mock(JdbcTemplate.class);
@@ -124,7 +128,9 @@ class Rev17SpecificationTest {
         for(boolean enabled:new boolean[]{false,true}) {
             var jdbc=mock(JdbcTemplate.class);
             var service=new TagoVehicleLocationService(jdbc,"","","","",false,false,10000,true,enabled,mock(HttpClient.class));
-            var position=new TagoVehicleLocationService.VehiclePosition("V","R","S",0,null,null,null,"{}");
+            if(enabled) when(jdbc.update(anyString(),any(Object[].class))).thenReturn(1);
+            var trace=new TagoVehicleLocationService.PositionTrace(java.util.UUID.randomUUID(),NOW,NOW,"C");
+            var position=new TagoVehicleLocationService.VehiclePosition("V","R","S",0,null,null,null,"{}",trace);
             var method=TagoVehicleLocationService.class.getDeclaredMethod("persist",TagoVehicleLocationService.VehiclePosition.class);
             method.setAccessible(true);assertEquals(enabled,method.invoke(service,position));
             if(enabled) verify(jdbc).update(contains("TAGO_OBSERVATION"),any(Object[].class));
@@ -176,6 +182,7 @@ class Rev17SpecificationTest {
             assertTrue(events.list.stream().anyMatch(e->e.getFormattedMessage().contains("TAGO_ARRIVAL")&&e.getFormattedMessage().contains("budget reached")));
         } finally {logger.detachAppender(events);events.stop();}
     }
+    @org.junit.jupiter.api.Tag("source-material")
     @Test void t15ExactDisjointTargetsAndArrivalCountFormula() throws Exception {
         var data=RouteTimetable.DEFAULT;
         assertEquals(3,data.laneA().size());assertEquals(100,data.laneB().size());assertEquals(105,data.all().size());

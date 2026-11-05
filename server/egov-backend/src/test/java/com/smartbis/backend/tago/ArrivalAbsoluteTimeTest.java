@@ -24,7 +24,7 @@ class ArrivalAbsoluteTimeTest {
             when(rs.getTimestamp("estimated_arrival_at")).thenReturn(Timestamp.from(now.plusSeconds(seconds)));
             doAnswer(i->((ResultSetExtractor<?>)i.getArgument(1)).extractData(rs))
                 .when(jdbc).query(anyString(),any(ResultSetExtractor.class),any(Object[].class));
-            var saved=new ArrivalService(jdbc).predict("V");
+            var saved=new ArrivalService(jdbc,java.util.UUID.fromString("11111111-1111-4111-8111-111111111111")).predict("V");
             assertEquals(seconds==30?"곧 도착":"도착 예정",saved.arrivalStatusText());
             assertFalse(saved.arrivalStatusText().contains("0분"));
             verify(jdbc).query(anyString(),any(ResultSetExtractor.class),any(Object[].class));
@@ -51,14 +51,15 @@ class ArrivalAbsoluteTimeTest {
         when(rs.getTimestamp("database_now")).thenReturn(Timestamp.from(expected.minusSeconds(90)));
         doAnswer(i->((ResultSetExtractor<?>)i.getArgument(1)).extractData(rs))
             .when(jdbc).query(anyString(),any(ResultSetExtractor.class),any(Object[].class));
-        assertEquals(expected,new ArrivalService(jdbc).predict("V").estimatedArrivalAt());
+        assertEquals(expected,new ArrivalService(jdbc,java.util.UUID.fromString("11111111-1111-4111-8111-111111111111")).predict("V").estimatedArrivalAt());
         verify(jdbc).query(anyString(),any(ResultSetExtractor.class),any(Object[].class)); verifyNoMoreInteractions(jdbc);
     }
     @Test @SuppressWarnings({"rawtypes","unchecked"})
     void nextStopCursorIsParameterizedAndReadOnly() {
         JdbcTemplate jdbc=mock(JdbcTemplate.class);
-        assertThrows(org.springframework.web.server.ResponseStatusException.class,()->new ArrivalService(jdbc).predict("V","S1"));
+        var run=java.util.UUID.fromString("11111111-1111-4111-8111-111111111111");
+        assertThrows(org.springframework.web.server.ResponseStatusException.class,()->new ArrivalService(jdbc,run).predict("V","S1"));
         verify(jdbc).query(argThat((String s)->s.contains("next_node_id IS DISTINCT FROM CAST(? AS varchar)")),
-            any(ResultSetExtractor.class),eq("V"),eq("S1"),eq("S1"),eq(60L));
+            any(ResultSetExtractor.class),eq("V"),eq(run),eq("S1"),eq("S1"),eq(60L));
     }
 }

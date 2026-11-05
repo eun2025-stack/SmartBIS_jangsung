@@ -42,14 +42,15 @@ final class RouteCallSchedule {
             }
             enabled.add(plan);
             boolean laneAEnabled = settings.getHundred().isEnabled()
+                    && RouteTimetable.DEFAULT.laneA().contains(plan.routeId())
                     && settings.getHundred().getRouteIds().contains(plan.routeId());
             boolean variantEnabled = settings.getVariantRouteIds().contains(plan.routeId());
             boolean localEnabled = settings.getLocal().isEnabled()
                     && settings.getLocal().getRouteIds().contains(plan.routeId());
             if(laneAEnabled) add(slots,counts,plan.routeId(),laneA,Role.HUNDRED,midnight);
             // Lane A IDs and the two routes without timetables cannot enter lane B.
-            if(!RouteTimetable.DEFAULT.laneA().contains(plan.routeId()) && (localEnabled||variantEnabled)) {
-                for(Window window:RouteTimetable.DEFAULT.windows(plan.routeId(),day,settings)) {
+            if(RouteTimetable.DEFAULT.laneB().contains(plan.routeId()) && (localEnabled||variantEnabled)) {
+                for(Window window:mergeWindows(plan.windows())) {
                     Instant terminal=terminalObservation.apply(plan.routeId(),window);
                     var closed=LocationLaneSchedule.close(new LocationLaneSchedule.DepartureWindow(window.start(),window.end(),window.interval()),
                         terminal==null?null:(int)java.time.Duration.between(midnight,terminal).getSeconds(),settings.getCloseAfterLastMinutes());
@@ -111,7 +112,7 @@ final class RouteCallSchedule {
     private static void add(Map<String,Slot> slots, int[] counts, String route, Window window, Role role, Instant midnight) {
         for (long second = window.start(); second < window.end(); second += window.interval()) {
             counts[role.ordinal()]++;
-            Instant at = midnight.plusSeconds(second), end = midnight.plusSeconds(Math.min(86400, second + window.interval()));
+            Instant at = midnight.plusSeconds(second), end = midnight.plusSeconds(Math.min(window.end(), second + window.interval()));
             String key = route + "@" + second;
             Slot old = slots.get(key);
             var roles = EnumSet.of(role);

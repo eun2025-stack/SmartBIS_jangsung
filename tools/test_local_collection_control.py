@@ -1,8 +1,9 @@
 import json
+import hashlib
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch,Mock
 import uuid
 import local_collection_admin as admin
 import local_collection_control as control
@@ -65,6 +66,79 @@ class LocalControlTests(unittest.TestCase):
     def test_six_settings_reject_mismatch_without_showing_value(self):
         self.env.write_text(self.env.read_text().replace('TAGO_ARRIVAL_ENABLED=true','TAGO_ARRIVAL_ENABLED=false'))
         with self.assertRaisesRegex(ValueError,'LOCAL_SIX_SETTINGS_MISMATCH'):self.prepare()
+    def test_up_never_applies_schema_and_forces_switch_off(self):
+        run=self.prepare();fake=Mock()
+        with patch.object(control,'validated_run',return_value=run),patch.object(control,'CONTROL',self.directory),\
+             patch.object(admin,'read_env',return_value={}),patch.object(admin,'Database',return_value=fake),\
+             patch.object(control,'schema_ready',return_value=True),patch.object(control,'write_local_compose'),patch.object(control,'run_logged') as commands:
+            control.up()
+        fake.apply.assert_not_called();self.assertEqual(commands.call_count,2)
+        self.assertEqual((self.directory/'enabled').read_text().strip(),'off')
+    def test_up_missing_schema_stops_before_build_or_compose(self):
+        run=self.prepare();fake=Mock()
+        with patch.object(control,'validated_run',return_value=run),patch.object(control,'CONTROL',self.directory),\
+             patch.object(admin,'read_env',return_value={}),patch.object(admin,'Database',return_value=fake),\
+             patch.object(control,'schema_ready',return_value=False),patch.object(control,'run_logged') as commands:
+            with self.assertRaisesRegex(ValueError,'SEPARATE_MIGRATE'):control.up()
+        fake.apply.assert_not_called();commands.assert_not_called()
+    def test_v020_target_is_rejected(self):
+        with self.assertRaisesRegex(ValueError,'V020_TARGET_FORBIDDEN'):
+            control.validate_migration_targets([self.root/'V020__policy.sql'],self.root)
+    def test_local_projection_excludes_inactive_operational_services(self):
+        source='''services:
+  egov-backend:
+    environment:
+      ADMIN_PASSWORD: ${REQUIRED_OPERATIONAL_VALUE:?not-for-local}
+  local-collection-backend:
+    profiles: [local-collection]
+    build:
+      context: ./server/egov-backend
+    env_file:
+      - ./.tmp/local-collection.env
+    volumes:
+      - ./.tmp/local-collection-control:/collection-control
+volumes:
+  db-data:
+'''
+        (self.root/'compose.yaml').write_text(source)
+        out=control.write_local_compose(self.root).read_text()
+        self.assertIn('local-collection-backend:',out);self.assertNotIn('REQUIRED_OPERATIONAL_VALUE',out)
+        self.assertNotIn('  egov-backend:',out);self.assertNotIn('db-data',out)
+        self.assertIn((self.root/'.tmp/local-collection.env').resolve().as_posix(),out)
+        credentials=admin.read_env(self.root/'.tmp/local-collection-control/backend-auth.env')
+        self.assertNotIn(credentials['DASHBOARD_ADMIN_USERNAME'],out)
+        self.assertNotIn(credentials['DASHBOARD_ADMIN_PASSWORD'],out)
+    def test_local_projection_rejects_new_environment_interpolation(self):
+        (self.root/'compose.yaml').write_text('services:\n  local-collection-backend:\n    environment: ${UNKNOWN}\n')
+        with self.assertRaisesRegex(ValueError,'SELF_CONTAINED'):control.write_local_compose(self.root)
+    def test_backend_credentials_are_local_generated_and_stable(self):
+        path=control.local_backend_auth(self.root)
+        first=path.read_text();self.assertEqual(control.local_backend_auth(self.root).read_text(),first)
+        values=admin.read_env(path)
+        self.assertGreaterEqual(len(values['DASHBOARD_ADMIN_PASSWORD']),40)
+        self.assertIn(self.root/'.tmp',path.parents)
+    def backup_receipt(self):
+        backup=self.root/'.tmp/copy.dump';data=b'PGDMP-fixture';backup.write_bytes(data)
+        receipt=self.root/'.tmp/receipt.json'
+        receipt.write_text(json.dumps({'database':admin.TARGET,'backup':str(backup),'size':len(data),
+            'sha256':hashlib.sha256(data).hexdigest(),'pg_restore_list_ok':True}))
+        return receipt
+    def test_backup_corruption_blocks_migration_before_db_connection(self):
+        self.prepare();receipt=self.backup_receipt()
+        (self.root/'.tmp/copy.dump').write_bytes(b'bad')
+        sql=self.root/'server/egov-backend/local-collection/run-schema.sql';sql.parent.mkdir(parents=True);sql.write_text('SELECT 1;')
+        with patch.object(admin,'Database') as connection:
+            with self.assertRaisesRegex(ValueError,'BACKUP_VERIFICATION_FAILED'):control.migrate(receipt,self.root)
+        connection.assert_not_called()
+    def test_separate_migrate_requires_off_and_uses_only_allowlisted_sql(self):
+        self.prepare();(self.root/'.tmp/local-collection-control').mkdir(exist_ok=True)
+        (self.root/'.tmp/local-collection-control/enabled').write_text('off')
+        sql=self.root/'server/egov-backend/local-collection/run-schema.sql';sql.parent.mkdir(parents=True);sql.write_text('SELECT 1;')
+        fake=Mock()
+        with patch.object(admin,'Database',return_value=fake),patch.object(control,'schema_ready',return_value=True):
+            control.migrate(self.backup_receipt(),self.root)
+        fake.apply.assert_called_once_with('SELECT 1;')
+        self.assertTrue((self.root/'.tmp/local-collection-control/schema-history.jsonl').exists())
     def test_existing_judgement_loader_limits_run_before_readonly_query(self):
         run=str(uuid.uuid4())
         args=SimpleNamespace(collection_run_id=run,observations_csv=None,podman_container='smartbis_jangsung-postgres-db-1',db_name='smartbis_db_copy2',db_user='fixture',db_host=None,db_port=None)

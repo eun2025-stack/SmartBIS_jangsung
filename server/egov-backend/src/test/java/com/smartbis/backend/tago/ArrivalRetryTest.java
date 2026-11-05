@@ -121,7 +121,7 @@ class ArrivalRetryTest {
         var sql=ArgumentCaptor.forClass(String.class);
         verify(jdbc).queryForObject(sql.capture(),eq(Double.class),any(Object[].class));
         assertTrue(sql.getValue().contains("COALESCE(raw_payload->>'interpolated','false')<>'true'"));
-        assertTrue(sql.getValue().contains("previous_order>=0 AND node_order>previous_order"));
+        assertTrue(sql.getValue().contains("previous_order IS NOT NULL AND node_order>previous_order"));
         assertTrue(sql.getValue().contains("observed_at-previous_at<=INTERVAL '30 minutes'"));
         assertTrue(sql.getValue().contains("percentile_cont(0.5)"));
     }

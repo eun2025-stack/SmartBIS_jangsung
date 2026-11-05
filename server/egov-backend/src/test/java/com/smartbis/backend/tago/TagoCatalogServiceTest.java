@@ -165,43 +165,36 @@ class TagoCatalogServiceTest {
     @Test
     void keepsZeroNodeOrderAsValidFirstStop() throws Exception {
         Document doc = TagoCatalogService.parseXml("""
-                <response><item><nodeid>STOP2</nodeid><nodenm>장성역</nodenm><nodeord>0</nodeord></item></response>
+                <response><item><nodeid>TSB175000010</nodeid><nodenm>롯데백화점</nodenm><nodeord>0</nodeord></item></response>
                 """);
         var stop = TagoCatalogService.stopFrom(
-                (org.w3c.dom.Element) doc.getElementsByTagName("item").item(0), "ROUTE1", 12);
-
+                (org.w3c.dom.Element) doc.getElementsByTagName("item").item(0), "TSB342000106", 12);
         assertEquals(0, stop.order());
+        assertEquals("TSB175000010", stop.id());
         assertFalse(stop.orderInferred());
-
         var normalized = TagoCatalogService.normalizeStopOrders(java.util.List.of(stop));
         assertEquals(0, normalized.get(0).order());
     }
 
     @Test
-    void fallsBackToZeroBasedResponseSequenceWhenStopOrderIsMissing() throws Exception {
+    void rejectsMissingOrderRatherThanFillingFromResponseSequence() throws Exception {
         Document doc = TagoCatalogService.parseXml("""
                 <response><item><nodeid>STOP3</nodeid><nodenm>장성역2</nodenm></item></response>
                 """);
-        var stop = TagoCatalogService.stopFrom(
-                (org.w3c.dom.Element) doc.getElementsByTagName("item").item(0), "ROUTE1", 12);
-
-        assertEquals(11, stop.order());
-        assertTrue(stop.orderInferred());
+        assertThrows(TagoCatalogService.CatalogValidationException.class,()->TagoCatalogService.stopFrom(
+                (org.w3c.dom.Element) doc.getElementsByTagName("item").item(0), "ROUTE1", 12));
     }
 
     @Test
-    void normalizesStopOrdersPerRouteAndDirectionToAvoidUniqueKeyCollisions() {
+    void rejectsPreviouslyInferredOrdersInsteadOfRenumbering() {
         var stops = java.util.List.of(
                 new TagoCatalogService.RouteStop("R1", "A", "A", 1, "UP", null, null, 1, false),
                 new TagoCatalogService.RouteStop("R1", "B", "B", 12, "UP", null, null, 2, true),
                 new TagoCatalogService.RouteStop("R1", "C", "C", 12, "DOWN", null, null, 3, false),
                 new TagoCatalogService.RouteStop("R1", "D", "D", 4, "UP", null, null, 4, false));
 
-        var normalized = TagoCatalogService.normalizeStopOrders(stops);
-
-        assertEquals(java.util.List.of(1, 2, 12, 4), normalized.stream().map(TagoCatalogService.RouteStop::order).toList());
-        assertTrue(normalized.get(1).orderInferred());
-        assertFalse(normalized.get(3).orderInferred());
+        assertThrows(TagoCatalogService.CatalogValidationException.class,()->TagoCatalogService.normalizeStopOrders(stops));
+        assertEquals(java.util.List.of(1,12,12,4),stops.stream().map(TagoCatalogService.RouteStop::order).toList());
     }
 
     @Test
@@ -262,5 +255,52 @@ class TagoCatalogServiceTest {
             throw new TagoCatalogService.OperationException(new IllegalArgumentException("permanent"));
         }, failedAttempt -> fail("Permanent failure must not retry")));
         assertEquals(1, calls[0]);
+    }
+
+    @Test void rejectsEmptyRawNodeOrder() throws Exception {
+        assertRawOrderFailure("", "STOP_ORDER_MISSING");
+    }
+
+    @Test void rejectsWhitespaceRawNodeOrder() throws Exception {
+        assertRawOrderFailure("   ", "STOP_ORDER_MISSING");
+    }
+
+    @Test void rejectsNonNumericRawNodeOrder() throws Exception {
+        assertRawOrderFailure("abc", "STOP_ORDER_INVALID");
+    }
+
+    @Test void keepsZeroRawNodeOrder() throws Exception {
+        var stop = parseRawOrder("0");
+        assertEquals(0, stop.order());
+        assertFalse(stop.orderInferred());
+    }
+
+    @Test void rejectsNegativeRawNodeOrder() throws Exception {
+        assertRawOrderFailure("-1", "STOP_ORDER_INVALID");
+    }
+
+    @Test void preservesPositiveRawNodeOrderOne() throws Exception {
+        var stop = parseRawOrder("1");
+        assertEquals(1, stop.order());
+        assertFalse(stop.orderInferred());
+    }
+
+    @Test void preservesPositiveRawNodeOrderTwelve() throws Exception {
+        var stop = parseRawOrder("12");
+        assertEquals(12, stop.order());
+        assertFalse(stop.orderInferred());
+    }
+
+    private static void assertRawOrderFailure(String raw, String expectedCode) throws Exception {
+        var failure = assertThrows(TagoCatalogService.CatalogValidationException.class,
+                () -> parseRawOrder(raw));
+        assertEquals(expectedCode, failure.failureCode());
+    }
+
+    private static TagoCatalogService.RouteStop parseRawOrder(String raw) throws Exception {
+        Document doc = TagoCatalogService.parseXml(("<response><item><nodeid>S</nodeid><nodenm>Fixture</nodenm>"
+                + "<nodeord>" + raw + "</nodeord></item></response>"));
+        return TagoCatalogService.stopFrom(
+                (org.w3c.dom.Element) doc.getElementsByTagName("item").item(0), "R", 99);
     }
 }

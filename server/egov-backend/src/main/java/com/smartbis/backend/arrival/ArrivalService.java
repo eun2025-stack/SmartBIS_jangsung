@@ -4,12 +4,14 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
@@ -20,9 +22,26 @@ public class ArrivalService {
     private final JdbcTemplate jdbcTemplate;
     @Value("${tago.arrival.soon-seconds:30}") private long soonSeconds=30;
     @Value("${tago.arrival.passage-grace-seconds:60}") private long passageGraceSeconds=60;
+    // rev6 12.5: explicit baseline only. Never select the latest run implicitly.
+    @Value("${collection.read-run-id:}") private String readRunId="";
 
+    @Autowired
     public ArrivalService(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
+    }
+
+    public ArrivalService(JdbcTemplate jdbcTemplate, UUID readRunId) {
+        this(jdbcTemplate);
+        this.readRunId=readRunId==null?"":readRunId.toString();
+    }
+
+    private UUID selectedReadRun() {
+        try {
+            UUID id=readRunId.isBlank()?null:UUID.fromString(readRunId);
+            return id==null||id.equals(new UUID(0,0))?null:id;
+        } catch(IllegalArgumentException|IllegalStateException invalid) {
+            return null;
+        }
     }
 
     /** App API: SELECT only. Never computes, stores or fetches an external prediction. */
@@ -32,16 +51,22 @@ public class ArrivalService {
 
     /** Optional read-only cursor after the client has briefly displayed a confirmed passage. */
     public ArrivalPrediction predict(String vehicleNumber,String afterPassedNodeId) {
+        UUID runId=selectedReadRun();
+        if(runId==null) throw new ResponseStatusException(NOT_FOUND,"정보 없음");
         ArrivalPrediction saved = jdbcTemplate.query("""
                 WITH saved AS (
                     SELECT * FROM arrival_predictions
                     WHERE vehicle_number=? AND (expires_at IS NULL OR expires_at>CURRENT_TIMESTAMP)
+                      AND collection_run_id=?
+                      AND EXISTS (SELECT 1 FROM collection_runs r
+                                  WHERE r.collection_run_id=arrival_predictions.collection_run_id AND NOT r.archived)
                       AND (CAST(? AS varchar) IS NULL OR next_node_id IS DISTINCT FROM CAST(? AS varchar))
                 ), enriched AS (
                     SELECT a.*,
                        (SELECT MIN(p.observed_at) FROM bus_positions p
                         JOIN bus_route_stops s ON s.route_id=a.route_id AND s.node_id=a.next_node_id
                         WHERE p.vehicle_number=a.vehicle_number AND p.route_id=a.route_id
+                          AND p.collection_run_id=a.collection_run_id
                           AND p.node_order>s.node_order
                           AND p.observed_at>=a.eta_queried_at AND p.observed_at<=CURRENT_TIMESTAMP
                           AND COALESCE(p.raw_payload->>'interpolated','false') NOT IN ('true','1')
@@ -70,7 +95,7 @@ public class ArrivalService {
                         instant(rs.getTimestamp("estimated_arrival_at")),instant(rs.getTimestamp("passed_at")),
                         rs.getTimestamp("database_now")==null?Instant.now():rs.getTimestamp("database_now").toInstant()),
                     instant(rs.getTimestamp("estimated_arrival_at")));
-        }, vehicleNumber,afterPassedNodeId,afterPassedNodeId,passageGraceSeconds);
+        }, vehicleNumber,runId,afterPassedNodeId,afterPassedNodeId,passageGraceSeconds);
         if (saved == null) throw new ResponseStatusException(NOT_FOUND, "정보 없음");
         return saved;
     }
@@ -145,12 +170,14 @@ public class ArrivalService {
             var result=new java.util.HashMap<String,Object>();
             result.put("vehicleNumber",rs.getString("vehicle_number"));result.put("routeId",rs.getString("route_id"));
             result.put("direction",rs.getString("direction")==null?"GLOBAL":rs.getString("direction"));
-            result.put("nodeId",rs.getString("node_id"));result.put("nodeOrder",rs.getInt("node_order"));
+            result.put("nodeId",rs.getString("node_id"));
+            int rawOrder=rs.getInt("node_order");
+            result.put("nodeOrder",rs.wasNull()?null:rawOrder);
             result.put("latitude",rs.getBigDecimal("latitude"));result.put("longitude",rs.getBigDecimal("longitude"));
             return result;
         }, vehicleNumber);
 
-        if (position == null) {
+        if (position == null || position.get("nodeOrder")==null) {
             throw new ResponseStatusException(
                     NOT_FOUND,
                     "차량 위치정보를 찾을 수 없습니다."
@@ -171,12 +198,14 @@ public class ArrivalService {
                     ON current_route_stop.node_id = current_stop.node_id
                   JOIN bus_route_stops next_route_stop
                     ON next_route_stop.route_id = current_route_stop.route_id
-                   AND next_route_stop.node_order = current_route_stop.node_order + 1
+                   AND next_route_stop.node_order >= current_route_stop.node_order
+                   AND next_route_stop.node_id = ?
                   JOIN bus_stops next_stop
                     ON next_stop.node_id = next_route_stop.node_id
                  WHERE current_route_stop.route_id = ?
                    AND current_route_stop.node_id = ?
                    AND current_route_stop.node_order = ?
+                 ORDER BY next_route_stop.node_order
                 LIMIT 1
                 """, rs -> {
             if (!rs.next()) {
@@ -190,6 +219,7 @@ public class ArrivalService {
             result.put("latitude",rs.getBigDecimal("latitude"));result.put("longitude",rs.getBigDecimal("longitude"));
             return result;
         },
+        expectedStop,
         position.get("routeId"),
         position.get("nodeId"),
         position.get("nodeOrder"));

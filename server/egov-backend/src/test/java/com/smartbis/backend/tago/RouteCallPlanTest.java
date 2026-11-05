@@ -155,6 +155,7 @@ class RouteCallPlanTest {
         var p=new LocationCollectionProperties(); p.setEnabled(true);
         var guard=new TagoQuotaGuard(p,new LocationCollectionOperationsTest.PersistedStore(),Clock.fixed(NOW,KST));
         var service=new TagoVehicleLocationService(jdbc,"mock-key","AUTO","36450","http://localhost",true,true,10000,false,false,http);
+        when(jdbc.queryForObject(contains("android_device_vehicle_assignments"),eq(Long.class))).thenReturn(1L);
         service.setOperationalExecution(new TagoLocationExecution(p,guard,mock(LocationCollectorLock.class),ms->{}));
         service.setOperationalScheduler(scheduler);
         try(var throttle=mockStatic(TagoApiRequestThrottle.class)) {
@@ -163,17 +164,21 @@ class RouteCallPlanTest {
             throttle.verifyNoInteractions();
         }
         verify(http,times(1)).send(any(HttpRequest.class),any(HttpResponse.BodyHandler.class));
-        verifyNoInteractions(jdbc); assertEquals(1,guard.callCount());
+        verify(jdbc,times(2)).queryForObject(contains("android_device_vehicle_assignments"),eq(Long.class));
+        verifyNoMoreInteractions(jdbc); assertEquals(1,guard.callCount());
         verify(repo,times(1)).read(); // TOO_SOON never consumes the next plan slot.
     }
     @Test void disabledServicePlanHasZeroMockHttpCalls() throws Exception {
         var http=mock(HttpClient.class); var jdbc=mock(JdbcTemplate.class); var repo=mock(JdbcRouteCallPlanStore.class);
         when(repo.read()).thenReturn(List.of(plan(false,null)));
         var service=new TagoVehicleLocationService(jdbc,"","AUTO","36450","http://localhost",true,true,10000,false,false,http);
+        when(jdbc.queryForObject(contains("android_device_vehicle_assignments"),eq(Long.class))).thenReturn(1L);
         var p=new LocationCollectionProperties(); p.setEnabled(true);
         service.setOperationalExecution(new TagoLocationExecution(p,new TagoQuotaGuard(p,new LocationCollectionOperationsTest.PersistedStore(),Clock.fixed(NOW,KST)),mock(LocationCollectorLock.class),ms->{}));
         service.setOperationalScheduler(new RouteCallPlanScheduler(repo,Clock.fixed(NOW,KST),KST));
-        assertEquals(0,service.pollNextAssignedRoute()); verifyNoInteractions(http); verifyNoInteractions(jdbc);
+        assertEquals(0,service.pollNextAssignedRoute()); verifyNoInteractions(http);
+        verify(jdbc).queryForObject(contains("android_device_vehicle_assignments"),eq(Long.class));
+        verifyNoMoreInteractions(jdbc);
     }
     @Test void migrationOnlyAddsMetadataAndDoesNotEnableAnything() throws Exception {
         String sql=Files.readString(Path.of("../database/migrations/V016__route_call_plan_windows.sql")).replaceAll("(?m)--.*$","");

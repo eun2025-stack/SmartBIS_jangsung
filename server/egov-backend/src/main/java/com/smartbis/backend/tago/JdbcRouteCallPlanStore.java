@@ -13,6 +13,11 @@ class JdbcRouteCallPlanStore {
     private final JdbcTemplate jdbc;
     JdbcRouteCallPlanStore(JdbcTemplate jdbc) { this.jdbc = jdbc; }
     List<RouteCallSchedule.Plan> read() {
+        return read(java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")),java.util.Set.of());
+    }
+    List<RouteCallSchedule.Plan> read(java.time.LocalDate day,java.util.Set<java.time.LocalDate> holidays) {
+        String dayType=day.getDayOfWeek()==java.time.DayOfWeek.SATURDAY
+            || day.getDayOfWeek()==java.time.DayOfWeek.SUNDAY || holidays.contains(day)?"HOLIDAY":"WEEKDAY";
         return jdbc.query("""
             SELECT route_id,route_group,interval_seconds,enabled,local_windows::text,
                    service_start_seconds,service_end_seconds,backup_interval_seconds,
@@ -23,10 +28,13 @@ class JdbcRouteCallPlanStore {
                 try {
                     var json = JSON.readTree(rs.getString("local_windows"));
                     if (!json.isArray()) throw new IllegalArgumentException("LOCATION_PLAN_INVALID_WINDOWS");
-                    for (var item : json) windows.add(new RouteCallSchedule.Window(
+                    for (var item : json) {
+                        if(item.hasNonNull("day_type") && !item.get("day_type").asText().equals(dayType)) continue;
+                        windows.add(new RouteCallSchedule.Window(
                         RouteCallSchedule.seconds(item.required("start").asText()),
                         RouteCallSchedule.seconds(item.required("end").asText()),
                         item.required("interval_seconds").asInt()));
+                    }
                 } catch (Exception error) { throw new IllegalArgumentException("LOCATION_PLAN_INVALID_WINDOWS", error); }
                 Integer start = (Integer) rs.getObject("service_start_seconds"), end = (Integer) rs.getObject("service_end_seconds");
                 var service = start == null || end == null ? null : new RouteCallSchedule.Window(start, end, rs.getInt("interval_seconds"));

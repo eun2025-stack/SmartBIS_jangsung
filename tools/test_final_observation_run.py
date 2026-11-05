@@ -2,6 +2,7 @@ import contextlib
 import io
 import tempfile
 import unittest
+from source_test_policy import source_material_test
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -79,6 +80,7 @@ class FinalRunTests(unittest.TestCase):
                 final.run(SimpleNamespace(output_root=output),now=final.NOT_BEFORE)
             self.assertEqual(sentinel.read_text(),'keep')
 
+    @source_material_test
     def test_integrated_final_pipeline_uses_one_snapshot_only_and_strict_default(self):
         # A disposable fixture clock and output directory, no DB or final report writes.
         data=[obs.Observation('7500','TSB342000002',datetime(2026,10,d,6,45,tzinfo=obs.KST),'0') for d in (16,23)]

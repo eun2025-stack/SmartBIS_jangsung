@@ -3,6 +3,7 @@ import io
 import json
 import tempfile
 import unittest
+from source_test_policy import source_material_test
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,6 +12,7 @@ from unittest.mock import patch
 import load_adopted_route_plan as loader
 
 
+@source_material_test
 class AdoptedPlanTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

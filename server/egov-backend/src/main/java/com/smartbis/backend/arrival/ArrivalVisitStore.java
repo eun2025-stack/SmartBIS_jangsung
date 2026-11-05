@@ -41,6 +41,16 @@ public class ArrivalVisitStore {
             SELECT query_count,queried_at,estimated_arrival_at,to_jsonb(arrival_query_visits)->>'visit_id' visit_id FROM arrival_query_visits WHERE vehicle_number=?
             """,rs->!rs.next()?null:new Visit(rs.getInt(1),instant(rs.getTimestamp(2)),instant(rs.getTimestamp(3)),uuid(rs.getString("visit_id"))),vehicle);
     }
+    public String activeStop(String vehicle,String route,String direction) {
+        try {
+            return jdbc.queryForObject("""
+                SELECT stop_id FROM arrival_query_visits
+                WHERE vehicle_number=? AND route_id=? AND direction=?
+                """,String.class,vehicle,route,direction);
+        } catch (org.springframework.dao.EmptyResultDataAccessException absent) {
+            return null;
+        }
+    }
     public Visit claim(String vehicle,String route,String stop,String direction,Instant now) {
         return jdbc.query("""
             UPDATE arrival_query_visits SET query_count=query_count+1,queried_at=?,next_query_at=NULL

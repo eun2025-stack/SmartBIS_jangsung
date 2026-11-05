@@ -253,11 +253,13 @@ watcher는 운영 중 계속 감시하므로 처리 완료 후에도 종료되�
 
 ## 미디어 경로 문제
 
-DB `source_path`는 컨테이너 절대경로가 아닌 content-store 기준 상대경로다.
+이 누적 로그의 앞선 설명은 정정한다(2026-10-02). `contents.source_path`는 상대경로가 아니라 Node watcher가 DB에 기록한 컨테이너 절대경로다. 실제 DB 조회에서 아래 형식을 확인했다.
 
 ```text
-2026-09-25/BATCH_20260925_0001/파일명.mp4
+/app/content-store/2026-09-25/BATCH_20260925_0001/파일명.mp4
 ```
+
+백엔드와 watcher는 같은 `/app/content-store` 경로를 mount/configuration으로 사용한다. 백엔드는 설정된 root 아래인지 검사한 뒤 스트리밍한다. 이 계약을 바꿀 때는 기존 DB 행과 백엔드 해석 규칙을 함께 마이그레이션해야 한다.
 
 ## 최종 API 정상 판정
 
@@ -268,3 +270,74 @@ Content-Length: 원본 파일 크기
 Accept-Ranges: bytes
 ```
 
+## 대시보드 로그인 리다이렉트에서 외부 포트 보존 (2026-10-02)
+
+### 증상
+
+브라우저에서 다음 대시보드 주소를 열면 로그인 페이지로 이동하지만 주소에서 `:8443`이 빠졌다.
+
+```text
+입력: https://localhost:8443/api/dashboard/index.html
+잘못된 이동: https://localhost/api/dashboard/login.html
+```
+
+### 원인과 수정
+
+`nginx.conf`가 `proxy_set_header Host $host;`를 사용하면 `$host`에는 `localhost`만 전달되고 클라이언트가 접속한 포트 `8443`은 전달되지 않는다. 외부에서 받은 Host 헤더 전체를 보존하고 Forwarded Host를 명시하도록 수정했다.
+
+```nginx
+proxy_set_header Host $http_host;
+proxy_set_header X-Forwarded-Host $http_host;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+```
+
+Spring Boot 설정의 `server.forward-headers-strategy=framework`와 함께 사용한다. `X-Forwarded-Port`에는 컨테이너 내부 포트 443을 외부 포트인 것처럼 지정하지 않는다. 현재 외부 포트는 Host 헤더(`localhost:8443`)로 전달한다.
+
+### 재현 및 검증
+
+Nginx 설정을 저장한 뒤 컨테이너를 재생성한다.
+
+```bash
+podman compose up -d --force-recreate nginx
+```
+
+2026-10-02 백엔드 보안 설정도 함께 빌드·재생성한 뒤 비로그인 대시보드 요청을 확인했다. 결과는 `302`이고 `Location` 헤더는 다음과 같이 외부 포트를 유지했다.
+
+```text
+Location: https://localhost:8443/api/dashboard/login.html
+```
+
+첫 요청은 백엔드가 재기동 중일 때 실행되어 일시적으로 `502`를 반환했다. 몇 초 후 재요청에서 위의 `302`를 확인했다. 배포 직후 실패를 최종 장애로 판단하지 말고 컨테이너 기동 로그와 health endpoint를 확인한 다음 다시 시험한다.
+
+이 검증은 비로그인 리다이렉트와 포트 보존까지 확인한 것이다. 로그인 성공 후 브라우저의 전체 대시보드 기능, 로그아웃 버튼 및 세션 종료까지 모두 통과했다는 뜻은 아니다. 관련 백엔드 변경과 남은 검증은 [egov-backend 변경 이력](SmartBIS_egov-backend_Build_Log_v1.0_updated.md)을 참고한다.
+
+## 백엔드 교체 뒤 stale upstream으로 발생한 502 (2026-10-02)
+
+지역 선택 코드가 포함된 백엔드 컨테이너를 재생성한 뒤 외부 `https://localhost:8443/api/actuator/health`가 502를 반환했다. Spring Boot 로그에서는 애플리케이션 시작 완료였고, Nginx 컨테이너 내부에서 `wget http://egov-backend:8080/api/actuator/health`는 200이었다. 반면 Nginx error log는 이전 upstream `10.89.0.20:8080`에 `Host is unreachable`이라고 기록했고 새 백엔드 주소는 `10.89.0.26`이었다.
+
+Podman 네트워크에서 컨테이너 교체로 IP가 바뀌었지만 기존 Nginx worker가 이미 해석한 주소를 계속 사용한 것이다. Nginx 설정이나 DB 문제가 아니므로 인증서·Compose 네트워크·DB를 초기화하지 않았다. Nginx만 다시 생성해 서비스 DNS를 새로 해석하도록 한 뒤 HTTPS health `UP`을 확인했다.
+
+따라서 백엔드를 재생성한 직후 502가 나면 (1) backend 시작 로그/내부 health, (2) Nginx error log의 upstream IP, (3) 새 backend IP, (4) Nginx 내부 서비스명 요청 순으로 비교한다. IP가 다르고 내부 서비스명 요청은 200이면 Nginx 재생성 후 재시험한다. 고정 IP로 설정하지 않는다.
+
+### 자동 DNS 재조회 설정 (2026-10-02)
+
+백엔드 재생성 때마다 Nginx도 수동 재생성해야 하는 문제를 줄이기 위해 `http` 블록에 Podman 내장 DNS resolver `10.89.0.1 valid=10s ipv6=off`를 지정하고 `/api/` location을 변수형 `proxy_pass`로 바꿨다. Podman machine의 현재 네트워크에서 Nginx 컨테이너 `/etc/resolv.conf`의 nameserver가 `10.89.0.1`임을 확인한 값이다. Nginx 설정 테스트 성공, Nginx 단독 재생성 후 backend 서비스명 health 200 및 외부 TLS health 200을 확인했다.
+
+이제 backend 컨테이너 IP가 바뀌어도 DNS 캐시 유효기간 뒤 새 IP를 찾아야 한다. Podman 네트워크 구성이 바뀌어 DNS gateway가 달라지면 resolver 값을 다시 확인해야 한다. 동기화 POST 403 자체의 원인은 이 Nginx DNS 수정으로 해결되었다고 간주하지 않는다. 재로그인 뒤 요청을 재시험해 Spring Security 로그와 외부 TAGO 응답을 구분한다.
+
+## 루트 URL의 404와 외부 포트가 빠지는 리다이렉트 수정 (2026-10-02)
+
+사용자가 Nginx 404 화면을 보고해 로그를 확인한 결과, 브라우저 요청은 `/`였다. 기존 설정은 모든 `/` 요청을 `return 404`로 처리했으며 대시보드 경로(`/api/dashboard/index.html`)로의 진입점이 없었다. 이를 대시보드 접근 오류로 오인하기 쉬웠다.
+
+`location = /`에서 `/api/dashboard/index.html`로 302 이동시키고, Nginx의 `absolute_redirect off`를 설정해 내부 listen 포트 `443`을 외부 포트처럼 노출하지 않게 했다. 첫 설정만 적용했을 때 Nginx가 `Location: https://localhost/api/dashboard/index.html`을 만들어 8443을 잃고, curl이 localhost:443 연결 실패하는 문제도 확인해 함께 수정했다. 현재는 상대 Location `/api/dashboard/index.html`을 보내므로 브라우저가 원래의 `https://localhost:8443` origin을 유지한다. Spring Security의 로그인 이동도 `https://localhost:8443/api/dashboard/login.html`로 포트를 보존한다.
+
+검증 결과:
+
+- Nginx `nginx -t`: syntax OK, test successful.
+- `GET https://localhost:8443/` 응답: 302, `Location: /api/dashboard/index.html`.
+- 이어지는 대시보드 비로그인 응답: 302, `Location: https://localhost:8443/api/dashboard/login.html`.
+- 로그인 페이지 응답: HTTP 200.
+- `GET https://localhost:8443/api/actuator/health`: HTTP 200, `{"status":"UP"}`.
+
+따라서 루트 주소 접속 시 더 이상 Nginx 기본 404 페이지가 나오지 않고 로그인 화면으로 이어진다. 존재하지 않는 다른 루트 경로는 계속 404이며, 이는 의도된 동작이다.

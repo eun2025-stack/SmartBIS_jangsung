@@ -73,8 +73,17 @@ public class TagoVehicleLocationService {
     private final ThreadLocal<LaneCall> laneCall=new ThreadLocal<>();
     record PositionTrace(java.util.UUID id,java.time.Instant requested,java.time.Instant responded,String lane) {}
     private final ThreadLocal<PositionTrace> positionTrace=new ThreadLocal<>();
-    @org.springframework.beans.factory.annotation.Value("${collection.capture-metadata:false}") private boolean captureMetadata;
+    @org.springframework.beans.factory.annotation.Value("${collection.capture-metadata:true}") private boolean captureMetadata=true;
+    @Value("${tago.location.always-call:false}") private boolean alwaysCall=false;
     @org.springframework.beans.factory.annotation.Autowired(required=false) private LocalCollectionControl localControl;
+    private static final String ASSIGNED_ACTIVE_VEHICLE_FILTER = """
+            WHERE EXISTS (
+                SELECT 1 FROM bus_vehicles v
+                JOIN android_device_vehicle_assignments a
+                  ON a.vehicle_number = v.vehicle_number
+                WHERE v.active = true AND v.vehicle_number = ?
+            )
+            """;
     @Autowired(required=false)
     void setSnapshots(PositionSnapshots value) { snapshots=value; }
 
@@ -149,6 +158,7 @@ public class TagoVehicleLocationService {
         if(localControl!=null&&!localControl.callsAllowed())return;
         if(!enabled||mockMode||operationalExecution==null||operationalScheduler==null) return;
         if(!operationalExecution.locationTimeAllowed()) return;
+        if(!registeredVehiclesAvailable()) return;
         long gap=operationalScheduler.gapMillis(lane);
         if(!operationalExecution.readyLane(lane,gap)) return;
         if(serviceKey.isBlank()||cityCode.isBlank()) { lastResult="MISSING_CREDENTIALS"; return; }
@@ -179,7 +189,7 @@ public class TagoVehicleLocationService {
             int saved = pollNextAssignedRoute();
             lastSavedCount = saved;
             lastCompletedAt = OffsetDateTime.now();
-            if (!lastResult.startsWith("NO_")) {
+            if (!lastResult.startsWith("NO_") && !lastResult.startsWith("SKIPPED_")) {
                 lastResult = lastFailedRouteCount == 0 ? "UP" : "DEGRADED";
             }
             log.info("TAGO vehicle-location poll completed: observationsSaved={}", saved);
@@ -227,6 +237,7 @@ public class TagoVehicleLocationService {
     }
 
     int pollNextAssignedRoute() throws Exception {
+        if (!registeredVehiclesAvailable()) return 0;
         if (operationalScheduler != null) {
             if (operationalExecution == null) throw new IllegalStateException("LOCATION_GUARD_MISSING");
             // Check only, without spending quota or consuming a scheduled slot.
@@ -276,15 +287,26 @@ public class TagoVehicleLocationService {
         return saved;
     }
 
+    private boolean registeredVehiclesAvailable() {
+        Long count = jdbc.queryForObject("""
+                SELECT count(*) FROM bus_vehicles v
+                JOIN android_device_vehicle_assignments a
+                  ON a.vehicle_number = v.vehicle_number
+                WHERE v.active = true
+                """, Long.class);
+        if (alwaysCall || (count != null && count > 0)) return true;
+        lastResult = "SKIPPED_NO_REGISTERED_VEHICLE";
+        lastRouteCount = 0; lastSavedCount = 0;
+        lastSucceededRouteCount = 0; lastFailedRouteCount = 0;
+        lastUnattemptedRouteCount = 0; lastPolledRouteId = "";
+        lastFailedRouteId = ""; lastFailureReason = "";
+        log.info("SKIPPED_NO_REGISTERED_VEHICLE");
+        return false;
+    }
+
     private List<String> assignedActiveRouteIds() {
-        return jdbc.query("""
-                SELECT DISTINCT r.route_id
-                  FROM bus_routes r
-                  JOIN bus_vehicles v
-                    ON v.route_id = r.route_id AND v.city_code = r.city_code AND v.active = true
-                 WHERE r.city_code = ? AND r.active = true
-                 ORDER BY r.route_id
-                """, (rs, rowNum) -> rs.getString(1), cityCode);
+        // A vehicle's currently observed route must not restrict route discovery.
+        return allActiveRouteIds();
     }
 
     private List<String> allActiveRouteIds() {
@@ -299,10 +321,11 @@ public class TagoVehicleLocationService {
         try {
             int saved = 0;
             for (VehiclePosition position : fetchRoutePositions(routeId)) {
+                if (!persist(position)) continue;
                 snapshots.observe(new PositionSnapshots.Position(position.vehicleNumber(),position.routeId(),position.nodeId(),position.nodeOrder(),
                     position.latitude(),position.longitude(),java.time.Instant.now()),false);
                 if(operationalScheduler!=null) operationalScheduler.observed(position.routeId(),position.nodeOrder(),java.time.Instant.now());
-                if(persist(position)) saved++;
+                saved++;
                 // Arrival collection runs separately; the app endpoint only reads saved values.
             }
             return saved;
@@ -407,10 +430,12 @@ public class TagoVehicleLocationService {
     private VehiclePosition positionFrom(String routeId, Element item) {
         String vehicleNumber = text(item, "vehicleno");
         String nodeId = text(item, "nodeid");
-        int nodeOrder = integer(text(item, "nodeord"), -1);
+        Integer nodeOrder;
+        try { nodeOrder=Integer.valueOf(text(item,"nodeord")); }
+        catch(NumberFormatException missingOrInvalid) { return null; }
         double latitude = decimal(text(item, "gpslati"), Double.NaN);
         double longitude = decimal(text(item, "gpslong"), Double.NaN);
-        if (vehicleNumber.isBlank() || nodeId.isBlank() || nodeOrder < 0
+        if (vehicleNumber.isBlank() || nodeId.isBlank()
                 || !Double.isFinite(latitude) || !Double.isFinite(longitude)
                 || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
         List<String> directions = jdbc.query("""
@@ -448,34 +473,31 @@ public class TagoVehicleLocationService {
         if(!observationMode) return false;
         if(localControl!=null&&!captureMetadata)throw new IllegalStateException("LOCAL_RUN_METADATA_REQUIRED");
         if(!captureMetadata) {
-            jdbc.update("""
+            return jdbc.update("""
                 INSERT INTO bus_positions(vehicle_number,route_id,node_id,node_order,latitude,longitude,observed_at,source,raw_payload)
-                VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP,'TAGO_OBSERVATION',CAST(? AS jsonb))
-                """,position.vehicleNumber(),position.routeId(),position.nodeId(),position.nodeOrder(),position.latitude(),position.longitude(),position.rawPayload());
-            return true;
+                SELECT ?,?,?,?,?,?,CURRENT_TIMESTAMP,'TAGO_OBSERVATION',CAST(? AS jsonb)
+                """ + ASSIGNED_ACTIVE_VEHICLE_FILTER,position.vehicleNumber(),position.routeId(),position.nodeId(),position.nodeOrder(),position.latitude(),position.longitude(),position.rawPayload(),position.vehicleNumber()) > 0;
         }
         if(position.trace()==null) throw new IllegalStateException("POSITION_CALL_METADATA_REQUIRED");
         if(localControl!=null) {
-            jdbc.update("""
+            return jdbc.update("""
                 INSERT INTO bus_positions(vehicle_number,route_id,node_id,node_order,latitude,longitude,observed_at,source,raw_payload,
                     requested_at,responded_at,call_id,call_lane,collection_run_id)
-                VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP,'TAGO_OBSERVATION',CAST(? AS jsonb),?,?,?,?,?)
-                """,position.vehicleNumber(),position.routeId(),position.nodeId(),position.nodeOrder(),position.latitude(),position.longitude(),position.rawPayload(),
-                java.sql.Timestamp.from(position.trace().requested()),java.sql.Timestamp.from(position.trace().responded()),position.trace().id(),position.trace().lane(),localControl.runId());
-            return true;
+                SELECT ?,?,?,?,?,?,CURRENT_TIMESTAMP,'TAGO_OBSERVATION',CAST(? AS jsonb),?,?,?,?,?
+                """ + ASSIGNED_ACTIVE_VEHICLE_FILTER,position.vehicleNumber(),position.routeId(),position.nodeId(),position.nodeOrder(),position.latitude(),position.longitude(),position.rawPayload(),
+                java.sql.Timestamp.from(position.trace().requested()),java.sql.Timestamp.from(position.trace().responded()),position.trace().id(),position.trace().lane(),localControl.runId(),position.vehicleNumber()) > 0;
         }
-        // Keep raw updowncd/nodeord without assignment or direction filtering.
-        jdbc.update("""
+        // Preserve raw response values only for assigned, active vehicles.
+        return jdbc.update("""
                 INSERT INTO bus_positions(vehicle_number, route_id, node_id, node_order,
                                           latitude, longitude, observed_at, source, raw_payload,
                                           requested_at,responded_at,call_id,call_lane)
-                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'TAGO_OBSERVATION', CAST(? AS jsonb),?,?,?,?)
-                """, position.vehicleNumber(), position.routeId(), position.nodeId(), position.nodeOrder(),
+                SELECT ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'TAGO_OBSERVATION', CAST(? AS jsonb),?,?,?,?
+                """ + ASSIGNED_ACTIVE_VEHICLE_FILTER, position.vehicleNumber(), position.routeId(), position.nodeId(), position.nodeOrder(),
                 position.latitude(), position.longitude(), position.rawPayload(),
                 position.trace()==null?null:java.sql.Timestamp.from(position.trace().requested()),
                 position.trace()==null?null:java.sql.Timestamp.from(position.trace().responded()),
-                position.trace()==null?null:position.trace().id(),position.trace()==null?null:position.trace().lane());
-        return true;
+                position.trace()==null?null:position.trace().id(),position.trace()==null?null:position.trace().lane(),position.vehicleNumber()) > 0;
     }
 
     static Document parseXml(byte[] body) throws Exception {

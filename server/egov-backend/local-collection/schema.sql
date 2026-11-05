@@ -1,6 +1,6 @@
--- Local collection only. Not a Flyway migration; never apply to smartbis_db.
+-- Not a Flyway migration. Apply only to smartbis_db (local rebuild).
 DO $$ BEGIN
- IF current_database()<>'smartbis_db_copy2' THEN RAISE EXCEPTION 'LOCAL_COLLECTION_DATABASE_REQUIRED'; END IF;
+ IF current_database()<>'smartbis_db' THEN RAISE EXCEPTION 'LOCAL_COLLECTION_DATABASE_REQUIRED'; END IF;
  IF to_regclass('public.tago_policy') IS NOT NULL THEN RAISE EXCEPTION 'POLICY_TABLE_PRESENT'; END IF;
 END $$;
 ALTER TABLE bus_positions

@@ -28,23 +28,6 @@ public class DeviceVehicleAssignmentController {
 
     public DeviceVehicleAssignmentController(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
-        jdbc.execute("""
-                CREATE TABLE IF NOT EXISTS android_device_identity_lock (
-                    vehicle_number VARCHAR(50) PRIMARY KEY,
-                    identity_sha256 CHAR(64) NOT NULL,
-                    first_seen_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
-                """);
-        jdbc.execute("""
-                CREATE TABLE IF NOT EXISTS android_device_vehicle_assignments (
-                    device_number VARCHAR(50) PRIMARY KEY
-                        REFERENCES android_device_identity_lock(vehicle_number) ON DELETE RESTRICT,
-                    vehicle_number VARCHAR(100) NOT NULL UNIQUE,
-                    assigned_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
-                """);
     }
 
     /** Returns only the terminal identity whose Android installation fingerprint is presented. */

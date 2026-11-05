@@ -26,7 +26,7 @@ public class ArrivalTravelEstimator {
             ), valid AS (
               SELECT *,EXTRACT(EPOCH FROM observed_at-previous_at)/NULLIF(node_order-previous_order,0) seconds
               FROM sequence WHERE route_id=? AND previous_route=route_id
-                AND previous_order>=0 AND node_order>previous_order AND node_order-previous_order<=6
+                AND previous_order IS NOT NULL AND node_order>previous_order AND node_order-previous_order<=6
                 AND observed_at>previous_at AND observed_at-previous_at<=INTERVAL '30 minutes'
                 AND (observed_at AT TIME ZONE 'Asia/Seoul')::date=(previous_at AT TIME ZONE 'Asia/Seoul')::date
                 AND EXTRACT(HOUR FROM previous_at AT TIME ZONE 'Asia/Seoul')=?

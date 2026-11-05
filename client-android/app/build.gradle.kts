@@ -1,15 +1,25 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
 }
 
-val smartbisApiBaseUrl = providers.gradleProperty("smartbisApiBaseUrl")
-    .orElse("https://192.168.1.5:8443/api")
-    .get()
+val smartbisLocalProperties = Properties().apply {
+    val localFile = rootProject.file("local.properties")
+    if (localFile.isFile) localFile.inputStream().use { load(it) }
+}
+val smartbisApiBaseUrl = providers.gradleProperty("smartbisApiBaseUrl").orNull
+    ?.trim()?.takeIf { it.isNotEmpty() }
+    ?: smartbisLocalProperties.getProperty("smartbisApiBaseUrl")
+        ?.trim()?.takeIf { it.isNotEmpty() }
+    ?: throw GradleException(
+        "smartbisApiBaseUrl is required. Supply -PsmartbisApiBaseUrl or set smartbisApiBaseUrl in local.properties."
+    )
 val smartbisVersionCode = providers.gradleProperty("smartbisVersionCode")
     .map { it.toInt() }
-    .getOrElse(15)
+    .getOrElse(16)
 val smartbisVersionName = providers.gradleProperty("smartbisVersionName")
-    .orElse("1.13")
+    .orElse("1.14")
     .get()
 
 android {

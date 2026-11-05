@@ -3,6 +3,7 @@ import io
 import re
 import tempfile
 import unittest
+from source_test_policy import source_material_test
 from contextlib import redirect_stdout
 from datetime import date, datetime
 from pathlib import Path
@@ -138,6 +139,7 @@ class ComparisonTests(unittest.TestCase):
         self.assertIn("source = 'TAGO_OBSERVATION'",sql)
         self.assertNotRegex(sql,r'\b(INSERT|UPDATE|DELETE|CREATE|DROP)\b')
 
+    @source_material_test
     def test_end_to_end_csv_and_bom(self):
         mapping = self.mapping_file('m.csv',[[self.local,'1','10'],[self.bus,'100','1000']])
         patterns = self.file('p.csv',[['patt','time','route'],['ud1','10:00','10'],['js1','10:00','1000']])
@@ -201,6 +203,7 @@ class ComparisonTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             return c.compare(args)
 
+    @source_material_test
     def test_actual_mapping_17_includes_117(self):
         path = Path(c.__file__).parents[1]/'군민운수 운행관리시스템'/'routeid&kecode_matching_ts.csv'
         _,_,hundred = c.load_mapping(path)
@@ -232,6 +235,7 @@ class ComparisonTests(unittest.TestCase):
         self.assertTrue(cal.is_holiday(self.day))
         self.assertFalse(cal.is_holiday(date(2026,8,17)))
 
+    @source_material_test
     def test_weekday_holiday_candidates_and_117_expectations(self):
         args = self.comparison_args()
         self.compare_quiet(args)
@@ -253,6 +257,7 @@ class ComparisonTests(unittest.TestCase):
         self.assertEqual(patterns['ud1'][0].route,'TSB999000001')
         self.assertEqual(excluded[0]['reason'],'범위 밖 노선(관내 패턴의 100번 계열 항목)')
 
+    @source_material_test
     def test_october_requires_month_and_confirmation(self):
         for month,confirmed in (('2026-08',False),('2026-10',False),('2026-08',True)):
             args = self.comparison_args(assignment_month=month,dispatch_confirmed=confirmed)
@@ -265,6 +270,7 @@ class ComparisonTests(unittest.TestCase):
         daily = self.compare_quiet(args)
         self.assertEqual(daily[0]['match_rate_pct'],100)
 
+    @source_material_test
     def test_no_observation_day_skipped(self):
         args = self.comparison_args()
         daily = self.compare_quiet(args)
@@ -273,6 +279,7 @@ class ComparisonTests(unittest.TestCase):
             self.assertNotIn('2026-10-19', (args.output_dir/name).read_text(encoding='utf-8-sig'))
         self.assertIn('2026-10-19 평일: 관측 없음',(args.output_dir/'summary.txt').read_text(encoding='utf-8-sig'))
 
+    @source_material_test
     def test_include_tago_is_opt_in(self):
         row = dict(vehicle_number='전남76아7500',route_id=self.local,observed_at='2026-10-15T10:00+09:00',source='TAGO')
         self.assertEqual(c.parse_observations([row]),[])
@@ -281,6 +288,7 @@ class ComparisonTests(unittest.TestCase):
         self.compare_quiet(args)
         self.assertIn('TAGO (참고용)',(args.output_dir/'summary.txt').read_text(encoding='utf-8-sig'))
 
+    @source_material_test
     def test_reversed_time_warns_and_continues(self):
         p = self.file('js9.csv',[['patt','time','route','time','route'],['js9','09:55',self.bus,'01:10',self.bus]])
         patterns,_,_,warnings = c.load_patterns([p],{}, {self.bus},self.hundred)
@@ -293,6 +301,7 @@ class ComparisonTests(unittest.TestCase):
         self.assertIn('시간 역전',(args.output_dir/'summary.txt').read_text(encoding='utf-8-sig'))
         self.assertTrue((args.output_dir/'recommendations.csv').exists())
 
+    @source_material_test
     def test_ud5_missing_route_strict_and_diagnostic_outputs(self):
         args = self.comparison_args()
         p = self.file('ud5-blank.csv',[['patt','time','route','time','route'],['ud5','10:00',self.local,'20:00','']])

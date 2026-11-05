@@ -50,8 +50,7 @@ CREATE TABLE IF NOT EXISTS bus_route_stops (
     node_order integer NOT NULL,
     direction varchar(50),
     created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (route_id, node_id, direction),
-    UNIQUE (route_id, direction, node_order)
+    PRIMARY KEY (route_id, direction, node_order)
 );
 
 CREATE INDEX IF NOT EXISTS idx_route_stops_node ON bus_route_stops(node_id);
@@ -74,6 +73,7 @@ CREATE TABLE IF NOT EXISTS bus_positions (
     vehicle_id bigint REFERENCES bus_vehicles(vehicle_id),
     vehicle_number varchar(100) NOT NULL,
     route_id varchar(100),
+    direction varchar(20),
     node_id varchar(100),
     node_order integer,
     latitude numeric(10,7),
@@ -219,6 +219,22 @@ CREATE INDEX IF NOT EXISTS idx_validation_errors_recent
 CREATE INDEX IF NOT EXISTS idx_validation_errors_status
     ON content_validation_errors(status, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS android_device_status (
+    vehicle_number varchar(50) PRIMARY KEY,
+    playback_status varchar(30) NOT NULL
+        CHECK (playback_status IN ('CONNECTING', 'PLAYING', 'WAITING', 'ERROR', 'OFFLINE_PLAYBACK')),
+    display_type varchar(30),
+    content_id varchar(100),
+    content_title varchar(300),
+    app_version varchar(40),
+    error_message varchar(1000),
+    last_seen_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_android_device_status_last_seen
+    ON android_device_status(last_seen_at DESC);
+
 CREATE OR REPLACE VIEW dashboard_error_summary AS
 SELECT
     COUNT(*) FILTER (WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '3 days') AS recent_3day_count,
@@ -227,4 +243,3 @@ SELECT
 FROM content_validation_errors;
 
 COMMIT;
-

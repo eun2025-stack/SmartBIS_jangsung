@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 class CollectionRunSchemaTest {
     @Test void actualLocalDdlArchivesExistingRowsAndKeepsNewRunSeparate() throws Exception {
         String sql=Files.readString(Path.of("local-collection/run-schema.sql"));
-        assertTrue(sql.contains("current_database()<>'smartbis_db_copy2'"));
+        assertFalse(sql.contains("current_database()"));
         // Target check is PostgreSQL-specific. Execute the actual table/column DDL
         // in an isolated in-memory database, never a host/container database.
         sql=sql.substring(sql.indexOf("CREATE TABLE"));

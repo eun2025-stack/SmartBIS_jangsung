@@ -12,7 +12,7 @@ import org.springframework.jdbc.core.RowMapper;
 import org.w3c.dom.Element;
 
 class TagoVehicleNodeOrderTest {
-    @Test void t8KeepsZeroBasedUpAndDownOrders() throws Exception {
+    @Test void t8KeepsMockRawUpAndDownOrdersWithoutAssumingRouteMinimum() throws Exception {
         var jdbc = new JdbcTemplate() {
             @Override public <T> java.util.List<T> query(String sql, RowMapper<T> mapper, Object... args) {
                 return java.util.List.of();

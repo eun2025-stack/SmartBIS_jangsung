@@ -70,3 +70,7 @@ tago-*.json
 *.xlsx
 client-android/**/build/
 client-android/.kotlin/
+
+# Headwind MDM 외부 배포본 (커밋 제외)
+deployment/headwind-mdm/hmdm-android-v6.39/
+deployment/headwind-mdm/hmdm-server-v5.41.1/

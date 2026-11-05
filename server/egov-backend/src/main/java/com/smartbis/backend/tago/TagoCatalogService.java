@@ -752,75 +752,30 @@ public class TagoCatalogService {
         if (id.isBlank()) throw new CatalogValidationException("STOP_ID_MISSING");
         if (name.isBlank()) throw new CatalogValidationException("STOP_NAME_MISSING");
         String rawOrder = childText(item, "nodeord");
-        int parsedOrder;
+        if(rawOrder.isBlank())throw new CatalogValidationException("STOP_ORDER_MISSING");
+        int order;
         try {
-            parsedOrder = Integer.parseInt(rawOrder);
+            order = Integer.parseInt(rawOrder);
         } catch (NumberFormatException e) {
-            parsedOrder = -1;
+            throw new CatalogValidationException("STOP_ORDER_INVALID");
         }
-        boolean orderInferred = parsedOrder < 0;
-        int order = orderInferred ? responseSequence - 1 : parsedOrder;
         if (order < 0) throw new CatalogValidationException("STOP_ORDER_INVALID");
         String directionCode = childText(item, "updowncd");
         String direction = "0".equals(directionCode) ? "UP" : "1".equals(directionCode) ? "DOWN" : "UNKNOWN";
         return new RouteStop(routeId, id, name, order, direction, directionCode,
                 decimalOrNull(childText(item, "gpslati")), decimalOrNull(childText(item, "gpslong")),
-                responseSequence, orderInferred);
+                responseSequence, false);
     }
 
     static List<RouteStop> normalizeStopOrders(List<RouteStop> input) {
-        Map<String, List<Integer>> indexesByRouteDirection = new LinkedHashMap<>();
-        for (int index = 0; index < input.size(); index++) {
-            RouteStop stop = input.get(index);
-            String key = stop.routeId() + "\u0000" + stop.direction();
-            indexesByRouteDirection.computeIfAbsent(key, ignored -> new ArrayList<>()).add(index);
+        // Compatibility name only: validate raw values, never normalize or fill.
+        Set<StopOrderKey> seen=new HashSet<>();
+        for(RouteStop stop:input) {
+            if(stop.orderInferred())throw new CatalogValidationException("SYNTHETIC_STOP_ORDER_FORBIDDEN");
+            if(!seen.add(new StopOrderKey(stop.routeId(),"GLOBAL",stop.order())))
+                throw new CatalogValidationException("DUPLICATE_RAW_STOP_ORDER");
         }
-
-        RouteStop[] normalized = new RouteStop[input.size()];
-        for (List<Integer> indexes : indexesByRouteDirection.values()) {
-            Set<Integer> usedOrders = new HashSet<>();
-            boolean[] fixed = new boolean[indexes.size()];
-            for (int position = 0; position < indexes.size(); position++) {
-                RouteStop stop = input.get(indexes.get(position));
-                fixed[position] = !stop.orderInferred() && stop.order() >= 0 && usedOrders.add(stop.order());
-            }
-
-            for (int position = 0; position < indexes.size(); position++) {
-                int sourceIndex = indexes.get(position);
-                RouteStop stop = input.get(sourceIndex);
-                if (fixed[position]) {
-                    normalized[sourceIndex] = stop;
-                    continue;
-                }
-
-                int lowerBound = 0;
-                for (int previous = position - 1; previous >= 0; previous--) {
-                    if (fixed[previous]) {
-                        lowerBound = input.get(indexes.get(previous)).order() + 1;
-                        break;
-                    }
-                }
-                int upperBound = Integer.MAX_VALUE;
-                for (int next = position + 1; next < indexes.size(); next++) {
-                    if (fixed[next]) {
-                        upperBound = input.get(indexes.get(next)).order() - 1;
-                        break;
-                    }
-                }
-
-                int fallbackOrder = firstAvailableOrder(lowerBound, upperBound, usedOrders);
-                if (fallbackOrder < 0) {
-                    fallbackOrder = firstAvailableOrder(0, Integer.MAX_VALUE, usedOrders);
-                }
-                if (fallbackOrder < 0) throw new CatalogValidationException("STOP_ORDER_EXHAUSTED");
-                usedOrders.add(fallbackOrder);
-                normalized[sourceIndex] = new RouteStop(stop.routeId(), stop.id(), stop.name(), fallbackOrder,
-                        stop.direction(), stop.directionCode(), stop.latitude(), stop.longitude(), stop.responseSequence(), true);
-            }
-        }
-        List<RouteStop> result = new ArrayList<>(normalized.length);
-        java.util.Collections.addAll(result, normalized);
-        return result;
+        return List.copyOf(input);
     }
 
     /**
@@ -955,14 +910,6 @@ public class TagoCatalogService {
 
     record DirectionInference(List<RouteStop> stops, long inferredStopCount, long unresolvedStopCount,
                               Map<String, Long> inferredByRule) { }
-
-    private static int firstAvailableOrder(int lowerBound, int upperBound, Set<Integer> usedOrders) {
-        if (lowerBound > upperBound) return -1;
-        for (int candidate = Math.max(0, lowerBound); candidate >= 0 && candidate <= upperBound; candidate++) {
-            if (!usedOrders.contains(candidate)) return candidate;
-        }
-        return -1;
-    }
 
     private static String postgresConstraintName(Throwable error) {
         for (Throwable cause = error; cause != null; cause = cause.getCause()) {

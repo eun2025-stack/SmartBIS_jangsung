@@ -48,13 +48,15 @@ class LocalCollectionControlTest {
     }
     @Test void everyPositionReceivesPreparedRunId() throws Exception {
         var jdbc=mock(JdbcTemplate.class);
+        when(jdbc.update(anyString(),any(Object[].class))).thenReturn(1);
         var service=new TagoVehicleLocationService(jdbc,"","","","",false,false,10000,true,true,mock(HttpClient.class));
         ReflectionTestUtils.setField(service,"captureMetadata",true);ReflectionTestUtils.setField(service,"localControl",control);
         var persist=TagoVehicleLocationService.class.getDeclaredMethod("persist",TagoVehicleLocationService.VehiclePosition.class);persist.setAccessible(true);
         var trace=new TagoVehicleLocationService.PositionTrace(UUID.randomUUID(),Instant.now(),Instant.now(),"A");
-        persist.invoke(service,new TagoVehicleLocationService.VehiclePosition("fixture","R","S",0,null,null,null,"{}",trace));
+        assertEquals(true,persist.invoke(service,new TagoVehicleLocationService.VehiclePosition("fixture","R","S",0,null,null,null,"{}",trace)));
         var args=org.mockito.ArgumentCaptor.forClass(Object[].class);verify(jdbc).update(contains("collection_run_id"),args.capture());
-        assertEquals(id,args.getValue()[args.getValue().length-1]);
+        assertEquals(id,args.getValue()[args.getValue().length-2]);
+        assertEquals("fixture",args.getValue()[args.getValue().length-1]);
     }
     @Test void finalArrivalReceivesSameRunEvenWithoutGeometry() {
         var jdbc=mock(JdbcTemplate.class);

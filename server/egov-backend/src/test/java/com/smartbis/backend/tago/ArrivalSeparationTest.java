@@ -83,7 +83,7 @@ class ArrivalSeparationTest {
     void missingDbValueReturnsExplicitNoInformationWithoutWrite() throws Exception {
         JdbcTemplate jdbc=mock(JdbcTemplate.class);
         when(jdbc.query(anyString(),any(ResultSetExtractor.class),any(Object[].class))).thenReturn(null);
-        var mvc=MockMvcBuilders.standaloneSetup(new ArrivalController(new ArrivalService(jdbc))).build();
+        var mvc=MockMvcBuilders.standaloneSetup(new ArrivalController(new ArrivalService(jdbc,java.util.UUID.fromString("11111111-1111-4111-8111-111111111111")))).build();
         mvc.perform(get("/v1/arrival").param("vehicleNumber","전남76아7500"))
             .andExpect(status().isNotFound()).andExpect(jsonPath("$.message").value("정보 없음"));
         verify(jdbc).query(contains("FROM arrival_predictions"),any(ResultSetExtractor.class),any(Object[].class));
@@ -98,7 +98,7 @@ class ArrivalSeparationTest {
         when(rs.getObject("eta_minutes")).thenReturn(2);
         doAnswer(i->((ResultSetExtractor<?>)i.getArgument(1)).extractData(rs))
             .when(jdbc).query(anyString(),any(ResultSetExtractor.class),any(Object[].class));
-        var value=new ArrivalService(jdbc).predict("전남76아7500");
+        var value=new ArrivalService(jdbc,java.util.UUID.fromString("11111111-1111-4111-8111-111111111111")).predict("전남76아7500");
         assertEquals(2,value.estimatedArrivalMinutes()); assertEquals("장성터미널",value.nextStop());
         verify(jdbc).query(contains("expires_at>CURRENT_TIMESTAMP"),any(ResultSetExtractor.class),any(Object[].class));
         verifyNoMoreInteractions(jdbc);
@@ -223,6 +223,7 @@ class ArrivalSeparationTest {
         assertEquals(1,simulate(1,50));
         assertNull(policy.nextQuery(NOW,90,2));
     }
+    @org.junit.jupiter.api.Tag("source-material")
     @Test void offlineSingleLocalRouteDailySimulation() throws Exception {
         Path root=Path.of("../.."); String route="TSB342000001";
         var json=new com.fasterxml.jackson.databind.ObjectMapper().readTree(Files.readString(

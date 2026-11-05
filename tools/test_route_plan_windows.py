@@ -1,9 +1,11 @@
 import json
 import unittest
+from source_test_policy import source_material_test
 import load_adopted_route_plan as adopted
 import load_route_plan_windows as windows
 
 
+@source_material_test
 class RouteWindowLoadTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

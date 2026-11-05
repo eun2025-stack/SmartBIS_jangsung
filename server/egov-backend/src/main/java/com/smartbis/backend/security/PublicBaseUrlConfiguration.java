@@ -19,7 +19,7 @@ public class PublicBaseUrlConfiguration {
         return uri.getScheme()+"://"+uri.getRawAuthority();
     }
     @Bean
-    CorsConfigurationSource publicCorsConfiguration(@Value("${public.base-url:}") String value) {
+    CorsConfigurationSource publicCorsConfiguration(@Value("${public.base-url}") String value) {
         var config=new CorsConfiguration();
         String origin=origin(value);
         if(!origin.isEmpty()) config.setAllowedOrigins(List.of(origin));

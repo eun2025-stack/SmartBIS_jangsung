@@ -123,14 +123,14 @@ class ArrivalRulesTest {
             if (expected.equals("통과")) when(rs.getTimestamp("passed_at")).thenReturn(java.sql.Timestamp.from(start.plusSeconds(30)));
             doAnswer(i->((ResultSetExtractor<?>)i.getArgument(1)).extractData(rs))
                 .when(jdbc).query(anyString(),any(ResultSetExtractor.class),any(Object[].class));
-            assertEquals(expected,new ArrivalService(jdbc).predict("V").arrivalStatusText());
+            assertEquals(expected,new ArrivalService(jdbc,java.util.UUID.fromString("11111111-1111-4111-8111-111111111111")).predict("V").arrivalStatusText());
             verify(jdbc).query(anyString(),any(ResultSetExtractor.class),any(Object[].class)); verifyNoMoreInteractions(jdbc);
         }
     }
     @Test @SuppressWarnings({"rawtypes","unchecked"})
     void recentPassageIsNotHiddenByCollectorSavingTheFollowingStop() {
         JdbcTemplate jdbc=mock(JdbcTemplate.class);
-        assertThrows(org.springframework.web.server.ResponseStatusException.class,()->new ArrivalService(jdbc).predict("V"));
+        assertThrows(org.springframework.web.server.ResponseStatusException.class,()->new ArrivalService(jdbc,java.util.UUID.fromString("11111111-1111-4111-8111-111111111111")).predict("V"));
         verify(jdbc).query(argThat((String sql)->sql.contains("FROM enriched")
             && sql.contains("ORDER BY CASE WHEN passed_at>=CURRENT_TIMESTAMP")
             && sql.contains("p.node_order>s.node_order") && sql.contains("interpolated")),

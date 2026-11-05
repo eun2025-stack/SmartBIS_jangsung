@@ -29,7 +29,7 @@ final class RouteCallPlanScheduler {
         return next(null);
     }
     Optional<String> next(RouteCallSchedule.Role lane) {
-        var plans = store.read();
+        var plans = settings==null?store.read():store.read(LocalDate.now(clock.withZone(zone)),settings.getHolidays());
         var now = clock.instant();
         var attempts = plans.stream().filter(p -> p.lastAttempt() != null)
             .collect(Collectors.toMap(RouteCallSchedule.Plan::routeId, RouteCallSchedule.Plan::lastAttempt));
